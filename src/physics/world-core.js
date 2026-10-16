@@ -586,6 +586,20 @@ export class PhysicsWorld {
       await this.stepDance();
       return;
     }
+    this.applyPendingResets();
+    for (let i = 0; i < 4; i++) {
+      advanceFootballTargets(this.slots);
+      applyChargeImpacts(this);
+      updateServos(this);
+      this.runtime.mj.mj_step(this.model, this.data);
+    }
+    this.releaseBoundaryBall();
+    this.frame++;
+    this.elapsed += CONTROL_DT;
+    this.syncState();
+    this.lastStepMs = performance.now() - start;
+  }
+  applyPendingResets() {
     // A reset may arrive while policy inference is awaiting its result.
     for (const p of this.room.players.values()) {
       const slot = this.slots.get(p.id);
@@ -609,17 +623,6 @@ export class PhysicsWorld {
       this.runtime.mj.mj_forward(this.model, this.data);
       this.room.ballResetPending = false;
     }
-    for (let i = 0; i < 4; i++) {
-      advanceFootballTargets(this.slots);
-      applyChargeImpacts(this);
-      updateServos(this);
-      this.runtime.mj.mj_step(this.model, this.data);
-    }
-    this.releaseBoundaryBall();
-    this.frame++;
-    this.elapsed += CONTROL_DT;
-    this.syncState();
-    this.lastStepMs = performance.now() - start;
   }
   stepDance() {
     return stepPolicyDance(this);
@@ -674,6 +677,7 @@ export class PhysicsWorld {
     if (!this.room.dancing)
       ball.cooldown = Math.max(0, ball.cooldown - CONTROL_DT);
     const goal =
+      this.room.match.phase === "playing" &&
       !this.room.dancing &&
       Math.abs(ball.x) > this.field.halfLength &&
       Math.abs(ball.z) < this.field.goalHalfWidth - this.field.ballRadius &&
@@ -683,19 +687,7 @@ export class PhysicsWorld {
       const team = ball.x > 0 ? "blue" : "orange";
       this.room.scores[team]++;
       this.room.goal = { team, revision: ++this.room.revision };
-      Object.assign(ball, {
-        x: 0,
-        z: 0,
-        y: 0.08,
-        vx: 0,
-        vz: 0,
-        vy: 0,
-        quat: [1, 0, 0, 0],
-        angular: [0, 0, 0],
-        cooldown: 1.5,
-      });
-      this.setBall(ball);
-      this.runtime.mj.mj_forward(this.model, this.data);
+      this.room.goalResetPending = true;
     }
     this.room.balls[0] = ball;
     this.room.engine = {

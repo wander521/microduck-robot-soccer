@@ -12,6 +12,7 @@ export function resetCharge(p) {
 }
 export function canCharge(room, p) {
   return (
+    (!room.match || room.match.phase === "playing") &&
     !room.dancing &&
     !p.spectator &&
     p.mode === "walk" &&
@@ -28,6 +29,7 @@ export function updateCharges(room, dt = 0.02) {
     p.chargeCooldown = Math.max(0, (p.chargeCooldown || 0) - dt);
     p.charge = Math.max(0, (p.charge || 0) - dt);
     if (
+      (room.match && room.match.phase !== "playing") ||
       room.dancing ||
       p.spectator ||
       p.mode !== "walk" ||
@@ -44,25 +46,25 @@ export function updateCharges(room, dt = 0.02) {
     if (!requested && (p.bot || p.auto) && canCharge(room, p)) {
       // Only challenge an upright opponent contesting the ball. Stagger the
       // decision windows per actor, so four robots never all charge on kickoff.
-      const phase = (room.physics?.elapsed || 0) % 8;
+      const phase = (room.physics?.elapsed || 0) % 5;
       const window =
-        2 +
+        1 +
         (String(p.id)
           .split("")
           .reduce((n, c) => n + c.charCodeAt(0), 0) %
           4) *
-          0.8;
-      if (phase >= window && phase < window + 0.08)
+          0.75;
+      if (phase >= window && phase < window + 0.35)
         target = players.find(
           (q) =>
             q.team !== p.team &&
             !q.spectator &&
             !q.recovery &&
             q.height > 0.085 &&
-            Math.hypot(q.x - room.balls[0].x, q.z - room.balls[0].z) < 0.5 &&
+            Math.hypot(q.x - room.balls[0].x, q.z - room.balls[0].z) < 0.65 &&
             Math.hypot(q.x - p.x, q.z - p.z) > 0.22 &&
-            Math.hypot(q.x - p.x, q.z - p.z) < 0.45 &&
-            Math.abs(wrap(Math.atan2(-(q.z - p.z), q.x - p.x) - p.yaw)) < 0.22,
+            Math.hypot(q.x - p.x, q.z - p.z) < 0.55 &&
+            Math.abs(wrap(Math.atan2(-(q.z - p.z), q.x - p.x) - p.yaw)) < 0.4,
         );
     }
     if ((requested || target) && canCharge(room, p)) {

@@ -1,3 +1,4 @@
+import { beginKickoff } from "../match.js";
 import { loadBrowserRuntime } from "./browser-runtime.js";
 import { PhysicsWorld } from "./world-core.js";
 import {
@@ -14,7 +15,8 @@ let room,
   paused = false,
   busy = false,
   timer = null,
-  initializing = false;
+  initializing = false,
+  lastPumpAt = null;
 function fail(error) {
   paused = true;
   postMessage({ type: "error", message: error.message || String(error) });
@@ -25,7 +27,9 @@ async function pump() {
   busy = true;
   const start = performance.now();
   try {
-    await tick(room);
+    const elapsed = lastPumpAt === null ? 0 : (start - lastPumpAt) / 1000;
+    lastPumpAt = start;
+    await tick(room, elapsed);
     postMessage(snapshot(room));
   } catch (error) {
     fail(error);
@@ -44,8 +48,9 @@ async function initialize(name) {
   room = createRoom();
   player = addPlayer(room, "you", String(name || "小鸭队长").slice(0, 24));
   syncBots(room);
+  beginKickoff(room);
   room.physics = new PhysicsWorld(runtime, room, FIELD);
-  await tick(room);
+  await tick(room, 0);
   postMessage({
     type: "progress",
     value: 1,
@@ -63,6 +68,7 @@ self.onmessage = ({ data }) => {
   if (!room) return;
   if (data.type === "pause") {
     paused = !!data.value;
+    lastPumpAt = null;
     if (paused) {
       player.forward = 0;
       player.turn = 0;

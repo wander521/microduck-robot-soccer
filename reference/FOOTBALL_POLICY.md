@@ -21,6 +21,8 @@ R 或触屏“冲撞”启动 1.1 秒冲刺，9 秒冷却。速度指令从普�
 
 ## 验收
 
+以下为较大球门、尚未加入进球后 3 秒开球流程时的模型验收记录。当前比赛规则见 `MATCH_RULES.md`。
+
 同一起点布局、物理频率与时长比较，旧版为 `2f5cfa1`。原始基线摘要见 `football/baseline.json`，最终测试见 `football/evaluation.json`。用 `node scripts/evaluate-football.mjs /tmp/football.json all` 可重跑真实 MuJoCo/ONNX 对局；不是位置插值或规则进球模拟。
 
 | 三组 2v2，每组 120 秒 | 原版 | 本次 |

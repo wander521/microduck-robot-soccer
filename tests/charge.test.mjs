@@ -60,8 +60,8 @@ test("AI only charges a nearby opponent contesting the ball, and cancels on reco
     p = addPlayer(room, "a", "AI", "blue"),
     q = addPlayer(room, "b", "Opponent", "orange");
   Object.assign(p, { bot: true, auto: true, x: 0, z: 0, yaw: 0, height: 0.12 });
-  Object.assign(q, { x: 0.3, z: 0, height: 0.12 });
-  room.physics = { elapsed: 2.8 };
+  Object.assign(q, { x: 0.48, z: -0.13, height: 0.12 });
+  room.physics = { elapsed: 1.9 };
   updateCharges(room);
   assert.ok(p.charge > 0);
   assert.equal(p.chargeTarget, q.id);

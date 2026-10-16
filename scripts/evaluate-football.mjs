@@ -130,7 +130,12 @@ try {
     const control = world.control.bind(world),
       reset = world.reset.bind(world);
     world.reset = (...args) => {
-      if (recording) m.forcedResets++;
+      if (
+        recording &&
+        !room.ballResetPending &&
+        world.slots.get(args[0].id)?.resetRevision === args[0].resetRevision
+      )
+        m.forcedResets++;
       return reset(...args);
     };
     world.control = async (p, slot) => {

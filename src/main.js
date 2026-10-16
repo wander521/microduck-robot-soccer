@@ -1,3 +1,5 @@
+import { setRigTeam, disposeTeamSkin } from "./team-skin.js";
+import { formatMatchTime } from "./match.js";
 import "./style.css";
 import { assetUrl } from "./assets.js";
 import { BrowserGame } from "./browser-game.js";
@@ -35,6 +37,9 @@ let entered = false,
   danceCamera = null,
   lastDanceBeat = -1,
   lastGoalRevision = 0,
+  matchFinished = false,
+  matchKickoff = false,
+  lastCountdown = null,
   toastTimer,
   goalTimer;
 const keys = new Set(),
@@ -691,6 +696,7 @@ function makeDuck(player) {
   const rig = cloneRig(
     player.mode === "roller" ? rollerPrototypeRig : prototypeRig,
   );
+  setRigTeam(rig, player.team);
   const group = rig.placer;
   group.position.set(player.x, 0, player.z);
   group.rotation.y = 0;
@@ -738,12 +744,14 @@ function updateSceneState(state) {
     if (d && d.rigMode !== player.mode) {
       scene.remove(d.rig.placer, d.ring);
       d.label.remove();
+      disposeTeamSkin(d.rig);
       d.ring.geometry.dispose();
       d.ring.material.dispose();
       ducks.delete(player.id);
       d = null;
     }
     d ||= makeDuck(player);
+    setRigTeam(d.rig, player.team);
     const previousRecovery = d.data?.recovery;
     d.data = player;
     if (player.id === myId && player.recovery && !previousRecovery)
@@ -781,6 +789,7 @@ function updateSceneState(state) {
           : "冲撞";
       const chargeDisabled =
         dancing ||
+        matchFinished ||
         player.spectator ||
         player.mode !== "walk" ||
         !!player.recovery ||
@@ -814,6 +823,7 @@ function updateSceneState(state) {
     if (!seen.has(id)) {
       scene.remove(d.rig.placer, d.ring);
       d.label.remove();
+      disposeTeamSkin(d.rig);
       d.ring.geometry.dispose();
       d.ring.material.dispose();
       ducks.delete(id);
@@ -835,11 +845,82 @@ function updateSceneState(state) {
   $("#connection-text").textContent = state.ai
     ? "单人游玩 · 机器鸭陪练"
     : "单人游玩 · 自由练习";
-  if (state.goal && state.goal.revision > lastGoalRevision) {
+  updateMatchUI(state.match);
+  if (!matchFinished && state.goal && state.goal.revision > lastGoalRevision) {
     lastGoalRevision = state.goal.revision;
     showGoal(state.goal.team);
   }
 }
+
+function updateMatchUI(match) {
+  if (!match) return;
+  const previous = matchFinished;
+  matchKickoff = match.phase === "kickoff";
+  matchFinished = match.phase === "finished";
+  const locked = matchFinished || matchKickoff || dancing;
+  const time = formatMatchTime(match.remaining);
+  $("#match-clock").textContent = time;
+  $("#match-clock").setAttribute(
+    "datetime",
+    "PT" + Math.ceil(match.remaining) + "S",
+  );
+  $("#match-status").textContent = matchFinished
+    ? "全场结束"
+    : matchKickoff
+      ? "准备开球"
+      : dancing
+        ? "舞蹈暂停"
+        : "剩余时间";
+  $("#scoreboard").classList.toggle(
+    "last-minute",
+    !matchFinished && match.remaining <= 60,
+  );
+  $("#match-result").hidden = !matchFinished;
+  $("#reset-action span").textContent = matchFinished ? "新一局" : "重新开球";
+  for (const button of $$(
+    "[data-mode],#ai,#switch-team,#autoplay,#kick-action,#touch-kick,#charge-action,#touch-charge,#dance-action,[data-key],#touch-quack",
+  )) {
+    const charge =
+      button.id === "charge-action" || button.id === "touch-charge";
+    if (!charge) button.disabled = locked;
+    else if (locked) button.disabled = true;
+  }
+  $("#kickoff-countdown").hidden = !matchKickoff;
+  if (matchKickoff) {
+    const count = Math.ceil(match.kickoffRemaining);
+    $("#kickoff-number").textContent = count;
+    if (count !== lastCountdown && sound && entered)
+      playTone([count === 1 ? 660 : 440], 0.08);
+    lastCountdown = count;
+    keys.clear();
+  } else lastCountdown = null;
+  if (matchFinished) {
+    const score = match.finalScore;
+    $("#result-title").textContent =
+      match.winner === "draw"
+        ? "本局平局"
+        : match.winner === "blue"
+          ? "海盐蓝队获胜"
+          : "汽水橙队获胜";
+    $("#result-title").className = match.winner === "draw" ? "" : match.winner;
+    $("#result-blue").textContent = score.blue;
+    $("#result-orange").textContent = score.orange;
+    clearTimeout(goalTimer);
+    $("#goal").hidden = true;
+    if (!previous) {
+      $("#keys").open = false;
+      clearTimeout(toastTimer);
+      $("#toast").classList.remove("visible");
+      $("#toast").textContent = "";
+      keys.clear();
+      if (entered && $("#preflight").hidden) $("#new-match").focus();
+    }
+  } else if (previous) {
+    keys.clear();
+    $("#world").focus();
+  }
+}
+
 async function connect() {
   game?.dispose();
   game = new BrowserGame();
@@ -1114,7 +1195,12 @@ function render() {
 }
 function sendInput() {
   if (!entered) return;
-  const blocked = dancing || freeCamera || !$("#preflight").hidden;
+  const blocked =
+    matchFinished ||
+    matchKickoff ||
+    dancing ||
+    freeCamera ||
+    !$("#preflight").hidden;
   send({
     type: "input",
     forward: blocked
@@ -1235,10 +1321,16 @@ $("#charge-action").onclick = () => send({ type: "charge" });
 $("#kick-action").onclick = () => send({ type: "kick" });
 $("#dance-action").onclick = () => send({ type: "dance" });
 function resetMatch() {
-  send({ type: "reset" });
-  toast("全部小鸭与足球已归位，重新开球！");
+  keys.clear();
+  send({ type: matchFinished ? "restart" : "reset" });
+  toast(
+    matchFinished
+      ? "新一局开球，5 分钟开始！"
+      : "全部小鸭与足球已归位，重新开球！",
+  );
 }
 $("#reset-action").onclick = resetMatch;
+$("#new-match").onclick = resetMatch;
 addEventListener("keydown", (e) => {
   if (
     e.target.matches?.(
@@ -1257,6 +1349,8 @@ addEventListener("keydown", (e) => {
   keys.add(e.code);
   sendInput();
   if (e.repeat) return;
+  if ((matchFinished || matchKickoff) && !["Space", "Escape"].includes(e.code))
+    return;
   if (e.code === "KeyX") {
     send({ type: "dance" });
     return;

@@ -1,12 +1,13 @@
+import { createMatch, advanceMatch, beginKickoff } from "./match.js";
 import { resetCharge, updateCharges } from "./charge.js";
 import { updateFootballAI, resetFootballAI } from "./football-ai.js";
 // Server-authoritative football simulation. Units: metres, seconds, radians.
 export const FIELD = {
   halfLength: 1.575,
   halfWidth: 0.93,
-  goalHalfWidth: 0.45,
+  goalHalfWidth: 0.36,
   goalDepth: 0.24,
-  goalHeight: 0.32,
+  goalHeight: 0.28,
   runoff: 0.34,
   ballRadius: 0.05,
 };
@@ -14,10 +15,12 @@ export const BALL_COUNT = 1;
 export function createRoom() {
   return {
     players: new Map(),
+    match: createMatch(),
     balls: [{ id: 0, x: 0, z: 0, y: 0.05, vx: 0, vz: 0, cooldown: 0 }],
     scores: { blue: 0, orange: 0 },
     ai: true,
     dancing: false,
+    goalResetPending: false,
     dance: null,
     goal: null,
     revision: 0,
@@ -79,8 +82,10 @@ export function resetPlayer(p, pose = null) {
 }
 export function resetPlay(room, player) {
   room.dancing = false;
+  room.goalResetPending = false;
   resetFootballAI(room);
-  const captain = room.players.get(player?.id) || room.players.values().next().value;
+  const captain =
+    room.players.get(player?.id) || room.players.values().next().value;
   const counts = { blue: 0, orange: 0 };
   for (const actor of room.players.values()) {
     if (actor === captain) {
@@ -90,7 +95,9 @@ export function resetPlay(room, player) {
     // Match the spread-out kickoff formation, never stack teammates together.
     const index = counts[actor.team]++;
     resetPlayer(actor, {
-      x: (actor.team === "blue" ? -1 : 1) * (0.65 + Math.floor(index / 2) * 0.32),
+      x:
+        (actor.team === "blue" ? -1 : 1) *
+        (0.65 + Math.floor(index / 2) * 0.32),
       z: index % 2 ? 0.28 : -0.28,
     });
   }
@@ -125,11 +132,38 @@ export function syncBots(room) {
     p.yaw = p.team === "blue" ? 0 : Math.PI;
   }
 }
-export async function tick(room) {
+export function restartMatch(room, player) {
+  room.match = createMatch(room.match.round + 1);
+  room.scores = { blue: 0, orange: 0 };
+  room.goal = null;
+  room.revision++;
+  resetPlay(room, player);
+  beginKickoff(room);
+}
+export async function tick(room, elapsedSeconds = 0.02) {
   if (!room.physics) throw new Error("MuJoCo physics has not been initialized");
-  if (!room.dancing) updateFootballAI(room, FIELD);
-  updateCharges(room);
+  advanceMatch(room, elapsedSeconds);
+  if (room.match.phase === "finished") return;
+  if (room.match.phase === "kickoff") {
+    for (const p of room.players.values()) {
+      p.forward = p.turn = 0;
+      p.kickRequested = false;
+      resetCharge(p);
+    }
+  } else {
+    if (!room.dancing) updateFootballAI(room, FIELD);
+    updateCharges(room);
+  }
   await room.physics.step();
+  if (room.goalResetPending) {
+    const captain =
+      [...room.players.values()].find((p) => !p.bot) ||
+      room.players.values().next().value;
+    resetPlay(room, captain);
+    beginKickoff(room);
+    room.physics.applyPendingResets();
+    room.physics.syncState();
+  }
 }
 export function snapshot(room) {
   return {
@@ -168,7 +202,11 @@ export function snapshot(room) {
       vz: b.vz,
       quat: b.quat,
     })),
-    scores: room.scores,
+    scores: { ...room.scores },
+    match: {
+      ...room.match,
+      finalScore: room.match.finalScore ? { ...room.match.finalScore } : null,
+    },
     goal: room.goal,
     ai: room.ai,
     dance: room.dance,

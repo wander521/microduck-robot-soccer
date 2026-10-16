@@ -469,6 +469,8 @@ test("trained ONNX dance stays physical for a full phrase and Space cancels in-f
 test("ball-aware kick returns through the trained stand controller and can walk away", async () => {
   const { room, player, world } = roomWithPlayer();
   try {
+    // Isolate locomotion from goal resets, covered by the kickoff test below.
+    room.balls[0].cooldown = 100;
     world.setBall({ x: 1, z: 0.7, y: 0.05 });
     await steps(room, 50);
     world.setBall({ x: player.x + 0.13, z: player.z - 0.035, y: 0.05 });
@@ -575,4 +577,100 @@ test("Space resets all physical ducks and the ball after in-flight inference com
     assert.ok(ball.angular.every(v=>Math.abs(v)<1e-8));
     assert.ok(world.data.qfrc_applied.every(v=>v===0));
   }finally{world.dispose();}
+});
+
+test("a goal resets every duck and ball before 3-2-1, then the same match resumes", async () => {
+  const { room, player, world } = roomWithPlayer();
+  room.ai = true;
+  syncBots(room);
+  try {
+    await steps(room, 30);
+    room.match.remaining = 123;
+    const revisions = new Map(
+      [...room.players.values()].map((p) => [p.id, p.resetRevision]),
+    );
+    world.setBall({ x: FIELD.halfLength + 0.03, z: 0, y: 0.05, vx: 0.1 });
+    await tick(room, 0.02);
+    assert.deepEqual(room.scores, { blue: 1, orange: 0 });
+    assert.equal(room.match.phase, "kickoff");
+    assert.equal(room.match.kickoffRemaining, 3);
+    const remaining = room.match.remaining;
+    for (const p of room.players.values()) {
+      assert.equal(p.resetRevision, revisions.get(p.id) + 1);
+      assert.equal(world.slots.get(p.id).resetRevision, p.resetRevision);
+      assert.equal(p.charge, 0);
+      assert.equal(p.kick, 0);
+      assert.equal(p.recovery, null);
+      assert.ok(p.team === "blue" ? p.x < 0 : p.x > 0);
+      for (const q of room.players.values())
+        if (q !== p) assert.ok(Math.hypot(p.x - q.x, p.z - q.z) > 0.3);
+    }
+    assert.ok(
+      Math.hypot(
+        room.balls[0].x,
+        room.balls[0].z,
+        room.balls[0].vx,
+        room.balls[0].vz,
+      ) < 1e-8,
+    );
+    for (const count of [2, 1]) {
+      await tick(room, 1);
+      assert.equal(Math.ceil(room.match.kickoffRemaining), count);
+      assert.equal(room.match.remaining, remaining);
+      assert.deepEqual(room.scores, { blue: 1, orange: 0 });
+      assert.ok(
+        [...room.players.values()].every(
+          (p) => p.forward === 0 && p.charge === 0,
+        ),
+      );
+    }
+    await tick(room, 1);
+    assert.equal(room.match.phase, "playing");
+    assert.equal(room.match.remaining, remaining);
+    await tick(room, 0.2);
+    assert.ok(room.match.remaining < remaining);
+  } finally {
+    world.dispose();
+  }
+});
+
+test("the whistle freezes physics and rejects a late goal; restart restores five minutes", async () => {
+  const { room, player, world } = roomWithPlayer();
+  try {
+    await steps(room, 30);
+    room.match.remaining = 0.01;
+    world.setBall({ x: FIELD.halfLength + 0.03, z: 0, y: 0.05 });
+    const elapsed = world.elapsed;
+    await tick(room, 0.02);
+    assert.equal(room.match.phase, "finished");
+    assert.equal(room.match.winner, "draw");
+    assert.deepEqual(room.scores, { blue: 0, orange: 0 });
+    assert.equal(world.elapsed, elapsed);
+    await tick(room, 10);
+    assert.equal(world.elapsed, elapsed);
+    const { applyCommand } = await import("../src/commands.js");
+    applyCommand(room, player, { type: "restart" });
+    assert.equal(room.match.remaining, 300);
+    await tick(room, 0);
+    assert.equal(room.match.phase, "kickoff");
+    assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
+  } finally {
+    world.dispose();
+  }
+});
+
+test("goal mouth collision and scoring use the smaller shared width", async () => {
+  const { room, world } = roomWithPlayer();
+  try {
+    assert.equal(FIELD.goalHalfWidth, 0.36);
+    assert.equal(FIELD.goalHeight, 0.28);
+    world.setBall({ x: FIELD.halfLength - 0.06, z: 0.43, y: 0.05, vx: 1 });
+    await steps(room, 20);
+    assert.equal(room.scores.blue, 0);
+    world.setBall({ x: FIELD.halfLength + 0.03, z: 0, y: 0.05 });
+    await tick(room);
+    assert.equal(room.scores.blue, 1);
+  } finally {
+    world.dispose();
+  }
 });

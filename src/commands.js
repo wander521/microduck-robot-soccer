@@ -1,7 +1,18 @@
 import { resetCharge } from "./charge.js";
 import { resetFootballAI } from "./football-ai.js";
-import { resetPlayer, resetPlay, syncBots, FIELD } from "./simulation.js";
+import {
+  resetPlayer,
+  resetPlay,
+  restartMatch,
+  syncBots,
+  FIELD,
+} from "./simulation.js";
 export function applyCommand(room, player, message) {
+  if (
+    room.match.phase !== "playing" &&
+    !["reset", "restart", "rename"].includes(message.type)
+  )
+    return;
   if (room.dancing && !["dance", "reset", "rename"].includes(message.type))
     return;
   switch (message.type) {
@@ -25,8 +36,12 @@ export function applyCommand(room, player, message) {
         actor.kickSource = null;
       }
       break;
+    case "restart":
+      if (room.match.phase === "finished") restartMatch(room, player);
+      break;
     case "reset":
-      resetPlay(room, player);
+      if (room.match.phase === "finished") restartMatch(room, player);
+      else resetPlay(room, player);
       break;
     case "spectator":
       resetCharge(player);
