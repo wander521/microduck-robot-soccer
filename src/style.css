@@ -1310,3 +1310,39 @@ h1 {
 .preflight-active .kickoff-countdown {
   visibility: hidden;
 }
+
+/* The same compact language control is available before kickoff and in the menu. */
+.language-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 3px;
+  margin: 0 0 18px;
+}
+.language-switch button {
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  border: 1px solid transparent;
+}
+.language-switch button[aria-pressed="true"] {
+  color: var(--paper);
+  background: #263f50;
+}
+.language-switch button:hover { border-color: #263f5066; }
+#language-menu { justify-content: flex-start; margin-bottom: 16px; }
+html[lang="en"] .team-name { font-size: 11px; }
+html[lang="en"] .game-brand strong { font-size: 14px; }
+@media (max-width: 720px) {
+  html[lang="en"] .team-name { font-size: 9px; }
+  html[lang="en"] .scene-switcher button { padding-inline: 7px; font-size: 9px; }
+  html[lang="en"] .toolbar button { padding-inline: 7px; }
+}
+@media (max-height: 550px) {
+  #language-entry { margin-bottom: 8px; }
+}

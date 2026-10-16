@@ -64,6 +64,10 @@
           ><span>游戏菜单</span>
         </summary>
         <div class="menu-content">
+          <nav class="language-switch" id="language-menu" aria-label="语言">
+            <button type="button" data-language="zh-CN" lang="zh-CN" aria-pressed="true">简体中文</button>
+            <button type="button" data-language="en" lang="en" aria-pressed="false">English</button>
+          </nav>
           <div class="pilot">
             <button id="profile" title="更改球员名字">
               <span class="pilot-avatar">D</span
@@ -291,6 +295,10 @@
         aria-modal="true"
         aria-labelledby="entry-title"
       >
+        <nav class="language-switch" id="language-entry" aria-label="语言">
+            <button type="button" data-language="zh-CN" lang="zh-CN" aria-pressed="true">简体中文</button>
+            <button type="button" data-language="en" lang="en" aria-pressed="false">English</button>
+          </nav>
         <div class="entry-emblem" aria-hidden="true">DUCK<span>!</span></div>
         <div id="name-state">
           <h1 id="entry-title">小鸭，开球！</h1>

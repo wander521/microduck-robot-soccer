@@ -1,74 +1,110 @@
-# MicroDuck Robot Soccer · 小鸭开球！
+**English** · [简体中文](README.zh-CN.md)
 
-四只 MicroDuck 在月球基地或浮空小岛上进行 2v2 足球比赛，也可以一起列队跳舞。机器人身体、关节、足球和碰撞由 MuJoCo 仿真，动作由 ONNX 策略控制。网页在浏览器内运行，无需游戏后端。
+# MicroDuck Robot Soccer
 
-[立即游玩](https://wander521.github.io/microduck-robot-soccer/) · [全部策略](reference/POLICIES.md) · [比赛规则](reference/MATCH_RULES.md) · [资源来源与许可证](THIRD_PARTY.md)
+Four robot ducks. One football. A five-minute match on the Moon—or a floating island.
 
-代码、文档与 GitHub Pages 发布统一使用 `main` 分支。
+Control a MicroDuck, let the AI take over, charge an opponent, or press **X** to bring the whole flock together for a dance. Robot motion and ball contact run in **MuJoCo**, with learned **ONNX** policies driving the joints. Everything runs in your browser.
 
-## 游玩与比赛规则
+**[Play in English](https://wander521.github.io/microduck-robot-soccer/?lang=en)** · [用中文试玩](https://wander521.github.io/microduck-robot-soccer/?lang=zh) · [Controls](#controls) · [Policies](#learned-policies)
 
-默认蓝橙两队各两只小鸭，你控制其中一只，其余由 AI 控制。菜单中的“自动踢球”可让你的小鸭也交给 AI，实现四鸭自动比赛；关闭“机器鸭队友与对手”可以单独练习。
+![Four blue and orange MicroDuck robots playing soccer on the Moon, with the English game interface](docs/media/english-match.jpg)
 
-- 每局 **5 分钟有效比赛时间**，进球多的一队获胜，同分为平局。
-- 开场显示 **3、2、1**；进球后保留比分和剩余时间，**全部小鸭与足球归位**，再倒数 3 秒继续。
-- 开球准备、跳舞和网页切到后台时暂停比赛计时；终场停止物理运动和计分。
-- 比赛中按 Space 让全场归位，保留比分与剩余时间；终场按 Space 或“再来一局”才会清零比分并恢复 05:00。
-- 蓝队的头部下壳、嘴部和脚部为蓝色，橙队保留橙色，白色外壳和眼睛保留。
-- 球场为 3.15 × 1.86 m，球门名义宽 0.72 m、高 0.28 m。边线外留有 0.34 m 机器人活动区；低速贴边球会轻微回场，方便绕到球后。
-- 两个场景使用相同比赛物理，月球基地也采用正常重力。
+<table>
+  <tr>
+    <td width="50%"><img src="docs/media/english-island.jpg" alt="MicroDuck soccer on a floating island surrounded by trees and a small house"></td>
+    <td width="50%"><img src="docs/media/english-dance.jpg" alt="Four MicroDucks lining up and dancing together using a trained policy"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Floating Island</strong> · a change of scenery</td>
+    <td align="center"><strong>Press X to dance</strong> · learned motion, real physics</td>
+  </tr>
+</table>
 
-每个浏览器标签页独立比赛，没有联机、邀请、共享房间或在线人数功能。首次进入需要从本站下载模型、字体与 WASM；运行时不访问训练服务器或 CDN。
+These are actual gameplay captures. The robots use Pollen Robotics' MicroDuck models; this is an independent soccer playground.
 
-## 操作
+<details>
+<summary>More screenshots: close-up play, the full arena, and language selection</summary>
 
-| 操作 | 按键 / 入口 |
+![Blue and orange MicroDuck robots contesting the ball, Chinese interface](docs/media/moon-match.png)
+![A wide view of the Moon Base soccer arena](docs/media/moon-arena.png)
+![The entry screen with Simplified Chinese and English language controls](docs/media/english-entry.jpg)
+
+<p><img src="docs/media/english-mobile.jpg" width="300" alt="English mobile interface with touch movement, shoot and charge controls"></p>
+
+</details>
+
+## Play a match
+
+By default, four ducks play **2v2**, with you controlling one duck and the AI controlling the other three. Choose **Autoplay** to watch all four play, or turn off **AI teammates & opponents** to practice alone.
+
+- **Five minutes of active match time.** The team with more goals wins; equal scores mean a draw.
+- **3–2–1 kickoff.** After a goal, every duck and the ball return to kickoff positions, then the countdown runs again. Scores and remaining time are preserved.
+- The clock pauses during kickoff preparation, dancing, and background tabs. Full time freezes play and scoring.
+- **Space** resets everyone and the ball during play without clearing the score or clock. At full time, Space or **Play again** starts a fresh five-minute match.
+- Blue and orange teams have matching robot accents. The white shells and eyes keep their original appearance.
+- The pitch is **3.15 × 1.86 m**, with **0.72 m-wide, 0.28 m-high** goals and **0.34 m** of robot run-off space outside the touchlines. Slow balls near the boundary receive a gentle nudge back into play.
+- Both environments use the same match physics. The Moon keeps normal gravity.
+
+Each tab runs its own single-player match. There are no shared rooms, invitations, or multiplayer servers. The first visit downloads the models, fonts, and WASM from this site; the game does not contact a training server or CDN.
+
+## English and Chinese
+
+Choose **English / 简体中文** on the entry card or in the game menu. Your first visit follows your browser language; later visits remember your choice. Switching language preserves the ongoing match, score, positions, and player-entered names.
+
+Shareable links support `?lang=en` and `?lang=zh`.
+
+## Controls
+
+| Action | Key / control |
 | --- | --- |
-| 前进 / 后退 | W / S 或 ↑ / ↓ |
-| 左转 / 右转 | A / D 或 ← / → |
-| 射门 | F 或“射门” |
-| 加速冲撞 | R 或“冲撞”，冷却 9 秒 |
-| 张嘴、嘎嘎 | M |
-| 全场归位 / 退出舞蹈并归位 | Space |
-| 集合跳舞 / 从当前站位继续比赛 | X |
-| 观众 / 场外漫游 | E |
-| 恢复跟随视角 | C |
-| 环顾 / 缩放 | 鼠标拖动 / 滚轮 |
-| 自由视角 | 点击“自由视角”，WASD 移动、Q / E 升降 |
+| Forward / backward | W / S or ↑ / ↓ |
+| Turn left / right | A / D or ← / → |
+| Shoot | F or **Shoot** |
+| Charge | R or **Charge** · 9-second cooldown |
+| Open beak and quack | M |
+| Reset all ducks and the ball / leave dance and reset | Space |
+| Walk into formation and dance / resume from the current position | X |
+| Spectate / roam off the pitch | E |
+| Follow your duck again | C |
+| Look around / zoom | Drag / scroll |
+| Free camera | **Free camera**, then WASD to move, Q / E up and down |
 
-手机提供方向键、射门、冲撞和嘎嘎按钮，也可点击舞蹈与归位。底角可以切换场景、行走 / 轮滑；右上菜单可以改名、换队、开关 AI、自动踢球和声音。轮滑依靠身体接触推球，主动射门和冲撞仅支持行走模式。
+Mobile has touch movement, shooting, charging, quacking, dancing, and reset controls. The lower corners switch environments and walking / roller modes. The menu contains language, player name, team, AI, autoplay, and sound settings.
 
-## 项目使用的策略
+Active shooting and charging require walking mode. Roller mode moves the ball through physical body contact.
 
-模型位于 `public/assets/policies/`，由 [runtime.js](src/physics/runtime.js) 统一加载。当前共加载 7 个 ONNX 文件：
+## Learned policies
 
-| 能力 | 模型文件 | 来源及当前用途 |
+Models live in `public/assets/policies/` and load through [runtime.js](src/physics/runtime.js). The game loads **seven ONNX files**:
+
+| Ability | Model | Origin and use |
 | --- | --- | --- |
-| 行走与站立平衡 | `BEST_alpha_walking.onnx` | Pollen Robotics 官方权重；移动、集合列队、等待和冲撞步态 |
-| 跌倒起身与射门后恢复 | `BEST_alpha_stand.onnx` | 官方权重；倒地恢复及新踢球策略结束后的姿态衔接 |
-| 轮滑 | `BEST_roller.onnx` | 官方权重；带被动滚轮的运动模式 |
-| 左脚踢球 | `ball_kick_left.onnx` | 官方权重；关闭新足球策略时使用的兼容路径 |
-| 右脚踢球 | `ball_kick_right.onnx` | 官方权重；关闭新足球策略时使用的兼容路径 |
-| 感知球位的踢球 | `football.onnx` | 本项目独立训练；当前默认射门策略，1024 环境训练 2000 轮，部署检查点 1999 |
-| 舞蹈 | `duckemw_dance.onnx` | 基于 DuckEMW 训练任务独立训练；4096 环境训练 4000 轮，部署检查点 3500 |
+| Walking and balance | `BEST_alpha_walking.onnx` | Official Pollen Robotics weights; movement, waiting, dance formation, and charging gait |
+| Getting up and post-shot recovery | `BEST_alpha_stand.onnx` | Official weights; fall recovery and the one-second transition after a learned soccer kick |
+| Roller locomotion | `BEST_roller.onnx` | Official weights, paired with the passive-wheel robot model |
+| Left-foot kick | `ball_kick_left.onnx` | Official compatibility path when the new soccer policy is explicitly disabled |
+| Right-foot kick | `ball_kick_right.onnx` | Official compatibility path when the new soccer policy is explicitly disabled |
+| Ball-aware soccer kick | `football.onnx` | Independently trained for this project: 1,024 environments, 2,000 iterations, deployed checkpoint 1999 |
+| Dance | `duckemw_dance.onnx` | Independently trained using the DuckEMW task: 4,096 environments, 4,000 iterations, deployed checkpoint 3500 |
 
-当前足球 manifest 的 `enabled: true` 使 F 和 AI 射门优先使用 `football.onnx`，并非三个踢球网络同时混合。显式关闭该开关才会使用官方左右脚模型；文件缺失或契约错误会报错，不会静默切换。
+`football.json` currently has `enabled: true`, so both manual and AI shots select `football.onnx`. The three kicking networks are not blended. Explicitly disabling it selects the official left/right kicking path; missing or incompatible files report an error rather than silently changing models.
 
-AI 的主攻 / 接应、绕球、对准、避让和冲撞时机由上层规则控制；这些决策再调用动作网络。项目尚未采用端到端训练的多智能体团队足球策略，也没有独立的冲撞神经网络。
+Team roles, approach paths, aiming, avoidance, and charge timing use a rule-based controller. These decisions call the motion policies. **Team tactics are not an end-to-end multi-agent learned policy, and charging has no separately trained neural network.**
 
-输入输出、切换顺序、模型 SHA-256、训练来源与替换步骤见 [策略清单与运行机制](reference/POLICIES.md)。足球评估见 [FOOTBALL_POLICY.md](reference/FOOTBALL_POLICY.md)，舞蹈来源及验证见 [DANCE_POLICY.md](reference/DANCE_POLICY.md)。
+See the [policy inventory and replacement guide](reference/POLICIES.md) (Chinese), [soccer training and evaluation](reference/FOOTBALL_POLICY.md) (Chinese), and [dance policy provenance](reference/DANCE_POLICY.md) (English). These record contracts, checkpoints, hashes, evaluation conditions, and limitations.
 
-## 冲撞与舞蹈
+## Charging and dancing
 
-**冲撞：** R 沿当前朝向启动最长 1.1 秒冲刺，目标速度平滑提高至最高 0.8 m/s，冷却 9 秒。AI 在对手靠近足球、双方距离 0.22–0.55 m 且朝向合适时择机发动；每个机器人错开观察窗口。舞蹈、起身、踢球、轮滑和观众状态不能发动。
+**Charge:** R launches a burst along the duck's heading for up to **1.1 seconds**, with a **9-second cooldown** and a peak forward command of **0.8 m/s**. AI ducks look for suitable nearby opponents contesting the ball, with staggered opportunity windows. Charging is unavailable while kicking, recovering, dancing, rolling, or spectating.
 
-冲撞使用现有行走策略。MuJoCo 检测到对手真实接触且具有足够接近速度后，施加一次有限的额外撞击冲量，双方承受等大反向作用。是否摔倒取决于接触和身体姿态，可能撞空，也可能双方倒地，再由起身策略恢复。Space 归位会取消冲撞并清除冷却。
+The gait remains learned walking. After MuJoCo reports actual opponent contact and enough closing speed, the game adds a bounded impact impulse with equal and opposite reactions. A charge may miss or topple either or both ducks; recovery uses the existing get-up policy. Space cancels charging and clears its cooldown.
 
-**舞蹈：** X 让场上小鸭通过行走策略走到队列、站稳后进入训练舞蹈。节拍和舞种由上层控制器提供，关节与身体运动由 ONNX 和 MuJoCo 决定。再次按 X 从舞蹈结束的实际站位继续踢球；Space 则退出并让全场归位。集合与舞蹈均暂停比赛计时，镜头连续过渡。
+**Dance:** X makes the ducks walk into a line and settle before switching to the trained dance policy. An upper-level controller supplies beat and move IDs; ONNX and MuJoCo determine the joints and body motion. Press X again to continue from the reached physical positions. Space leaves the dance and resets everyone. Formation and dancing pause the match clock, and the camera transitions continuously.
 
-## 本地开发与构建
+## Run locally
 
-开发环境需要 Node.js 22+ 和 npm；普通玩家只需支持 WebGL、WebAssembly 和 Worker 的现代浏览器。
+Development needs **Node.js 22+** and npm. Players only need a modern browser with WebGL, WebAssembly, and Workers.
 
 ```sh
 git clone https://github.com/wander521/microduck-robot-soccer.git
@@ -77,81 +113,88 @@ npm ci
 npm run dev
 ```
 
-开发地址默认为 `http://localhost:5173/`；端口占用时以终端打印的地址为准。
+The default development URL is `http://localhost:5173/`; use the URL printed by Vite if that port is occupied.
 
-构建并预览与线上一致的子路径：
+Build and preview the same subpath used by GitHub Pages:
 
 ```sh
 BASE_PATH=/microduck-robot-soccer/ npm run build
 BASE_PATH=/microduck-robot-soccer/ npm start
 ```
 
-预览地址为 `http://localhost:5173/microduck-robot-soccer/`。部署到域名根目录时使用 `npm run build` 与 `npm start`，不设置 `BASE_PATH`。不要直接双击 `dist/index.html`，应通过 HTTP 静态服务访问。
+Open `http://localhost:5173/microduck-robot-soccer/`. For hosting at a domain root, omit `BASE_PATH`. Serve `dist/` over HTTP; do not open `index.html` directly from disk.
 
-| 命令 | 用途 |
+| Command | Purpose |
 | --- | --- |
-| `npm run dev` | 准备浏览器运行时并启动 Vite |
-| `npm run build` | 生成可静态部署的 `dist/` |
-| `npm start` | 在 127.0.0.1:5173 预览已构建页面 |
-| `npm run preview` | Vite 静态预览 |
-| `npm test` | 自动回归，包含原生 MuJoCo / ONNX 物理测试 |
-| `npm run dev:native` | 启动本机原生推理辅助服务，供内部协议验证使用 |
+| `npm run dev` | Prepare browser runtime files and start Vite |
+| `npm run build` | Produce static `dist/` |
+| `npm start` | Preview the build on 127.0.0.1:5173 |
+| `npm run preview` | Vite static preview |
+| `npm test` | Regression tests, including MuJoCo / ONNX physical tests |
+| `npm run dev:native` | Optional local native-inference helper for internal protocol validation |
 
-浏览器游戏始终使用 Worker；启动原生辅助服务不会让网页自动切换推理方式。原生测试需要 `onnxruntime-node` 的本机二进制。如果安装时使用了 `ONNXRUNTIME_NODE_INSTALL=skip`，浏览器构建仍可使用 WASM，但原生测试需要补装对应运行库。
+The playable frontend always uses a Worker. Starting the native helper does not switch the webpage to server inference. Native tests need the platform binary for `onnxruntime-node`; browser builds still use WASM.
 
-## 运行架构与目录
+## Architecture
 
 ```text
-键盘 / 触摸 / AI 决策
-        ↓
-Worker：比赛状态 → 策略选择 → ONNX 关节目标
-        ↓
-BAM / XL330 执行器模型 → MuJoCo 碰撞与动力学
-        ↓
-真实身体位姿和关节 → 主线程 Three.js 插值渲染
+Keyboard / touch / team AI
+            ↓
+Worker: match state → policy selection → ONNX joint targets
+            ↓
+BAM / XL330 actuator model → MuJoCo dynamics and contacts
+            ↓
+Physical body and joint state → Three.js interpolation and rendering
 ```
 
-物理步长为 0.005 秒（目标 200 Hz），动作推理每 4 个物理步执行一次（目标 50 Hz）；画面独立渲染。性能不足时物理仿真可能变慢，比赛钟仍按前台实际经过时间计时。ONNX 使用单线程 WASM，不依赖跨源隔离响应头。
+Physics targets **200 Hz** with a 0.005-second step; policy inference targets **50 Hz**, once every four physics steps. Rendering is separate. Slower hardware may reduce physical simulation speed; the active match clock uses foreground wall time. ONNX runs single-threaded WASM and needs no cross-origin isolation headers.
 
-| 路径 | 职责 |
+| Path | Responsibility |
 | --- | --- |
-| `src/main.js`、`src/style.css`、`index.html` | 画面、镜头、HUD、菜单和输入 |
-| `src/island-world.js`、`src/team-skin.js` | 浮空小岛与机器人队色 |
-| `src/simulation.js`、`src/match.js`、`src/commands.js` | 全场状态、计时、计分、归位和命令 |
-| `src/football-ai.js`、`src/charge.js` | 足球角色决策与冲撞时机 |
-| `src/physics/worker.js`、`browser-runtime.js` | 浏览器物理循环与资源加载 |
-| `src/physics/world-core.js`、`servo.mjs` | 共享物理世界、模型切换与执行器 |
-| `src/physics/trained-dance.js`、`dance-formation.js` | 舞蹈推理、集合与原地退出 |
-| `public/assets/` | ONNX、机器人模型、字体与运行时 |
-| `reference/` | 策略来源、比赛规则、评估记录与许可证 |
-| `scripts/`、`tests/` | 构建准备、对局评估及回归测试 |
+| `src/main.js`, `src/style.css`, `index.html` | Rendering, camera, HUD, menus, and input |
+| `src/i18n.js` | English / Chinese UI, language selection, and message formatting |
+| `src/island-world.js`, `src/team-skin.js` | Floating-island scenery and team colors |
+| `src/simulation.js`, `src/match.js`, `src/commands.js` | Shared state, clock, score, reset, and commands |
+| `src/football-ai.js`, `src/charge.js` | Team decisions and charge timing |
+| `src/physics/worker.js`, `src/physics/browser-runtime.js` | Browser physics loop and asset loading |
+| `src/physics/world-core.js`, `src/physics/servo.mjs` | Shared physical world, policy handoff, and actuators |
+| `src/physics/trained-dance.js`, `src/physics/dance-formation.js` | Dance inference, walking formation, and in-place exit |
+| `public/assets/` | Policies, robots, fonts, and vendored runtime files |
+| `reference/` | Sources, contracts, match rules, evaluations, and licenses |
+| `docs/media/` | Actual gameplay screenshots and their [provenance](docs/media/SOURCES.md) |
+| `scripts/`, `tests/` | Build preparation, match evaluation, and regression tests |
 
-## 验证与发布
+Code, documentation, and Pages deployment use the **main** branch.
+
+## Verify and deploy
 
 ```sh
 npm test
 BASE_PATH=/microduck-robot-soccer/ npm run build
 ```
 
-普通测试默认跳过两个需独立原生服务的协议测试。如需运行它们，在终端一执行 `PORT=5178 npm run dev:native`，终端二执行：
+Two optional protocol tests are skipped by default because they need a separate native helper. In one terminal, run `PORT=5178 npm run dev:native`; in another:
 
 ```sh
 RUN_NETWORK_TESTS=1 TEST_SERVER=ws://127.0.0.1:5178 npm test
 ```
 
-完整足球评估可执行以下命令，运行真实物理对局并输出 JSON 与逐帧记录：
+Run full soccer evaluation with real physics and export JSON plus frame records:
 
 ```sh
 node scripts/evaluate-football.mjs /tmp/microduck-football-evaluation.json all
 ```
 
-历史模型评估使用过较大的球门，不能直接等同于当前比赛结果；评估范围与局限见足球策略文档。
+Some historical evaluations used larger goals. Read their conditions before comparing them with current match results.
 
-GitHub Pages 工作流为 `.github/workflows/pages.yml`：推送 `main` → 安装依赖 → 测试 → 构建 → 发布 `dist/`。仓库 Pages 的 Source 使用 GitHub Actions，部署环境 `github-pages` 允许 `main` 分支。发布路径自动使用仓库名称生成，仓库更名后的下一次发布会采用新路径。发布无需训练服务器、Node.js 游戏后端或 CDN；构建时从固定版本依赖复制 MuJoCo / ONNX WASM。
+`.github/workflows/pages.yml` deploys on pushes to `main`: install, test, build, and publish `dist/`. Pages Source must be **GitHub Actions**, and the `github-pages` deployment environment must allow `main`. The base path follows the repository name automatically. No training machine, game backend, or CDN is needed.
 
-## 已知边界与资源说明
+## Boundaries and credits
 
-- 团队战术仍由规则控制，复杂角落、慢球和协作还有改进空间。
-- 场外装饰没有完整碰撞；真实碰撞覆盖球场、球门、小鸭和足球。
-- 起身失败超过容错时间或出现无效物理状态时，运行时会归位机器人，避免比赛永久卡住。
-- 场景和 HUD 为本项目程序实现。机器人模型来自 Pollen Robotics，几何资源采用 CC BY-NC-SA 4.0；上游模拟与训练代码保留 Apache-2.0 来源，其他依赖各自遵循其许可证，详见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+- Team tactics remain rule-based; corner handling, slow-ball play, and coordination have room to improve.
+- Decorative scenery does not have complete collision geometry. Robots, the ball, pitch, and goals do.
+- An invalid physical state or recovery timeout can reset an individual robot as a fail-safe.
+- Scenes and HUD are original implementations. MicroDuck geometry is by **Pollen Robotics**, licensed **CC BY-NC-SA 4.0**. Upstream simulation and training code retain Apache-2.0 attribution; other dependencies use their own licenses.
+- This is an independent project using MicroDuck, not an official Pollen Robotics product.
+
+See [THIRD_PARTY.md](THIRD_PARTY.md) for complete resource attribution and [screenshot sources](docs/media/SOURCES.md). Contributions are welcome; include reproduction steps or evaluation evidence when changing physical behavior.

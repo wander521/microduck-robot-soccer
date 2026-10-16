@@ -1,3 +1,4 @@
+import { t, runtimeMessage, chooseLanguage, setLanguage, getLanguage, bindStaticTranslations } from "./i18n.js";
 import { setRigTeam, disposeTeamSkin } from "./team-skin.js";
 import { formatMatchTime } from "./match.js";
 import "./style.css";
@@ -73,7 +74,7 @@ let renderer,
   moonWorld,
   smallWorld,
   orbitPlanet;
-let loadingProgress = 0;
+let loadingProgress = 0, lastProgressMessage = "", activeToast = null, nameWasEdited = false;
 function progress(p, text) {
   loadingProgress = Math.max(p, loadingProgress);
   $("#percent").textContent = `${Math.round(loadingProgress * 100)}%`;
@@ -82,11 +83,13 @@ function progress(p, text) {
     "aria-valuenow",
     Math.round(loadingProgress * 100),
   );
-  $("#loading-message").textContent = text;
+  lastProgressMessage = text;
+  $("#loading-message").textContent = runtimeMessage(text);
 }
 function toast(text, duration = 3000) {
   clearTimeout(toastTimer);
-  $("#toast").textContent = text;
+  activeToast = text;
+  $("#toast").textContent = t(text);
   $("#toast").classList.add("visible");
   toastTimer = setTimeout(
     () => $("#toast").classList.remove("visible"),
@@ -112,7 +115,44 @@ function modalInert(active) {
   for (const el of document.body.children)
     if (el.id !== "preflight" && el.tagName !== "SCRIPT") el.inert = active;
 }
-$("#player-name").value = safeStoredName() || "小鸭队长";
+let storedLanguage;
+try { storedLanguage = localStorage.getItem("microduck-language"); } catch {}
+setLanguage(chooseLanguage({
+  query: params.get("lang"), stored: storedLanguage, browser: navigator.language,
+}));
+const translateStatic = bindStaticTranslations(document.body);
+$("#player-name").value = safeStoredName() || t("小鸭队长");
+$("#player-name").addEventListener("input", () => { nameWasEdited = true; });
+function renderLanguage() {
+  translateStatic();
+  document.documentElement.lang = getLanguage();
+  document.title = t("小鸭开球！ · {scene}", { scene: t(sceneKey === "moon-base" ? "月球基地" : "浮空小岛") });
+  $('meta[name="description"]').content = t("小鸭开球！在月球基地或浮空小世界，和机器鸭队友来一场单人足球赛。");
+  $$("[data-language]").forEach(button => button.setAttribute("aria-pressed", button.dataset.language === getLanguage()));
+  if (!nameWasEdited && !safeStoredName()) $("#player-name").value = t("小鸭队长");
+  $("#sound").textContent = t(sound ? "声音：开" : "声音：关");
+  $("#camera span").textContent = t(freeCamera ? "跟随小鸭" : "自由视角");
+  $("#camera").setAttribute("aria-label", t(freeCamera ? "跟随小鸭" : "自由视角"));
+  $("#dance-action span").textContent = t(dancing ? "返回比赛" : "一起跳舞");
+  if ($("#player-name").getAttribute("aria-invalid") === "true")
+    $("#name-error").textContent = t("请输入 2–24 个字符的玩家姓名。");
+  if (lastProgressMessage) $("#loading-message").textContent = runtimeMessage(lastProgressMessage);
+  if (loadError) $("#loading-message").textContent = t("加载失败：{message}。请重新加载球场。", { message: runtimeMessage(loadError.message) });
+  if (activeToast) $("#toast").textContent = t(activeToast);
+  if (snapshot) {
+    updateSceneState(snapshot);
+    if (snapshot.goal && !$("#goal").hidden)
+      $("#goal span").textContent = t(snapshot.goal.team === "blue" ? "蓝队得分 · 重新开球" : "橙队得分 · 重新开球");
+  }
+}
+$$("[data-language]").forEach(button => button.addEventListener("click", () => {
+  setLanguage(button.dataset.language);
+  try { localStorage.setItem("microduck-language", getLanguage()); } catch {}
+  params.set("lang", getLanguage() === "en" ? "en" : "zh");
+  history.replaceState(null, "", "?" + params);
+  renderLanguage();
+}));
+renderLanguage();
 document.body.classList.add("preflight-active");
 modalInert(true);
 if (matchMedia("(max-width:720px)").matches) $("#keys").open = false;
@@ -663,7 +703,7 @@ const loadPromise = initialize().catch((error) => {
   console.error(error);
   loadError = error;
   $("#loading-message").textContent =
-    `加载失败：${error.message}。请检查本地资源后重试。`;
+    t("加载失败：{message}。请检查本地资源后重试。", { message: runtimeMessage(error.message) });
   $("#retry").hidden = false;
   return false;
 });
@@ -682,7 +722,7 @@ function setScene(key, update = true) {
     b.classList.toggle("active", active);
     b.setAttribute("aria-pressed", active);
   });
-  document.title = `小鸭开球！ · ${key === "moon-base" ? "月球基地" : "浮空小岛"}`;
+  document.title = t("小鸭开球！ · {scene}", { scene: t(key === "moon-base" ? "月球基地" : "浮空小岛") });
   if (update) {
     params.set("scene", key);
     params.delete("room");
@@ -760,33 +800,33 @@ function updateSceneState(state) {
     d.ring.visible = !player.spectator;
     d.label.classList.toggle("orange", player.team === "orange");
     const mine = player.id === myId;
-    d.name.textContent = mine ? "你" : player.name;
+    d.name.textContent = mine ? t("你") : player.bot ? t(player.name) : player.name;
     d.label.hidden = false;
     d.label.classList.toggle("mine", mine);
     d.relation.textContent = mine
       ? ""
       : player.spectator
-        ? "观众"
+        ? t("观众")
         : player.team === state.players.find((p) => p.id === myId)?.team
-          ? "队友"
-          : "对手";
+          ? t("队友")
+          : t("对手");
     if (mine) {
       $("#player-handle").textContent = player.name;
       $("#player-team").textContent = player.spectator
-        ? " · 观众"
-        : ` · ${player.team === "blue" ? "蓝色" : "橙色"}队`;
+        ? t(" · 观众")
+        : t(player.team === "blue" ? " · 蓝色队" : " · 橙色队");
       $("#player-team").classList.toggle("orange", player.team === "orange");
       $("#you-blue").hidden = player.team !== "blue";
       $("#you-orange").hidden = player.team !== "orange";
       $("#switch-team").textContent =
-        player.team === "blue" ? "换到橙队" : "换到蓝队";
+        player.team === "blue" ? t("换到橙队") : t("换到蓝队");
       const cooldown = Math.ceil(player.chargeCooldown || 0);
       const charging = player.charge > 0;
       const chargeLabel = charging
-        ? "冲撞中"
+        ? t("冲撞中")
         : cooldown
           ? cooldown + "s"
-          : "冲撞";
+          : t("冲撞");
       const chargeDisabled =
         dancing ||
         matchFinished ||
@@ -800,10 +840,10 @@ function updateSceneState(state) {
         button.setAttribute(
           "aria-label",
           charging
-            ? "冲撞中"
+            ? t("冲撞中")
             : cooldown
-              ? "冲撞冷却，剩余 " + cooldown + " 秒"
-              : "加速冲撞",
+              ? t("冲撞冷却，剩余 {seconds} 秒", { seconds: cooldown })
+              : t("加速冲撞"),
         );
       }
       $("#charge-action span").textContent = chargeLabel;
@@ -811,7 +851,7 @@ function updateSceneState(state) {
       auto = player.auto;
       spectator = player.spectator;
       $("#autoplay").setAttribute("aria-pressed", auto);
-      $("#autoplay").textContent = auto ? "接管小鸭" : "自动踢球";
+      $("#autoplay").textContent = auto ? t("接管小鸭") : t("自动踢球");
       $$("[data-mode]").forEach((b) => {
         const active = b.dataset.mode === player.mode;
         b.classList.toggle("active", active);
@@ -843,8 +883,8 @@ function updateSceneState(state) {
   $("#score-orange").textContent = state.scores.orange;
   $("#ai").checked = state.ai;
   $("#connection-text").textContent = state.ai
-    ? "单人游玩 · 机器鸭陪练"
-    : "单人游玩 · 自由练习";
+    ? t("单人游玩 · 机器鸭陪练")
+    : t("单人游玩 · 自由练习");
   updateMatchUI(state.match);
   if (!matchFinished && state.goal && state.goal.revision > lastGoalRevision) {
     lastGoalRevision = state.goal.revision;
@@ -865,24 +905,26 @@ function updateMatchUI(match) {
     "PT" + Math.ceil(match.remaining) + "S",
   );
   $("#match-status").textContent = matchFinished
-    ? "全场结束"
+    ? t("全场结束")
     : matchKickoff
-      ? "准备开球"
+      ? t("准备开球")
       : dancing
-        ? "舞蹈暂停"
-        : "剩余时间";
+        ? t("舞蹈暂停")
+        : t("剩余时间");
   $("#scoreboard").classList.toggle(
     "last-minute",
     !matchFinished && match.remaining <= 60,
   );
   $("#match-result").hidden = !matchFinished;
-  $("#reset-action span").textContent = matchFinished ? "新一局" : "重新开球";
+  $("#reset-action span").textContent = matchFinished ? t("新一局") : t("重新开球");
   for (const button of $$(
     "[data-mode],#ai,#switch-team,#autoplay,#kick-action,#touch-kick,#charge-action,#touch-charge,#dance-action,[data-key],#touch-quack",
   )) {
     const charge =
       button.id === "charge-action" || button.id === "touch-charge";
-    if (!charge) button.disabled = locked;
+    // Dance must remain clickable to return to the match while other play inputs lock.
+    if (button.id === "dance-action") button.disabled = matchFinished || matchKickoff;
+    else if (!charge) button.disabled = locked;
     else if (locked) button.disabled = true;
   }
   $("#kickoff-countdown").hidden = !matchKickoff;
@@ -898,10 +940,10 @@ function updateMatchUI(match) {
     const score = match.finalScore;
     $("#result-title").textContent =
       match.winner === "draw"
-        ? "本局平局"
+        ? t("本局平局")
         : match.winner === "blue"
-          ? "海盐蓝队获胜"
-          : "汽水橙队获胜";
+          ? t("海盐蓝队获胜")
+          : t("汽水橙队获胜");
     $("#result-title").className = match.winner === "draw" ? "" : match.winner;
     $("#result-blue").textContent = score.blue;
     $("#result-orange").textContent = score.orange;
@@ -924,14 +966,14 @@ function updateMatchUI(match) {
 async function connect() {
   game?.dispose();
   game = new BrowserGame();
-  $("#connection-text").textContent = "正在准备比赛";
+  $("#connection-text").textContent = t("正在准备比赛");
   game.onState = updateSceneState;
   game.onError = (error) => {
     loadError = error;
     $(".status-dot").classList.add("offline");
-    $("#connection-text").textContent = "准备失败，请重新加载";
+    $("#connection-text").textContent = t("准备失败，请重新加载");
     $("#loading-message").textContent =
-      `加载失败：${error.message}。请重新加载球场。`;
+      t("加载失败：{message}。请重新加载球场。", { message: runtimeMessage(error.message) });
     $("#retry").hidden = false;
     if (entered) toast("游戏运行中断，请刷新页面后重试。", 6000);
   };
@@ -949,7 +991,7 @@ function updateDanceUI(dance) {
     dancing = active;
     keys.clear();
     $("#dance-action").setAttribute("aria-pressed", active);
-    $("#dance-action span").textContent = active ? "返回比赛" : "一起跳舞";
+    $("#dance-action span").textContent = active ? t("返回比赛") : t("一起跳舞");
     $("#dance-banner").hidden = !active;
     document.body.classList.toggle("dancing", active);
     for (const el of $$(
@@ -1009,8 +1051,8 @@ function updateDanceUI(dance) {
     });
   }
   $("#dance-move").textContent = !performing
-    ? dance.phase === "settling" ? "站稳了，准备开跳" : `正在集合 · ${dance.ready}/${dance.total} 就位`
-    : dance.move;
+    ? dance.phase === "settling" ? t("站稳了，准备开跳") : t("正在集合 · {ready}/{total} 就位", { ready: dance.ready, total: dance.total })
+    : t(dance.move);
   const beat = Math.floor(dance.beat);
   if (performing && beat !== lastDanceBeat) {
     lastDanceBeat = beat;
@@ -1040,7 +1082,7 @@ function showGoal(team) {
   clearTimeout(goalTimer);
   $("#goal").hidden = false;
   $("#goal span").textContent =
-    `${team === "blue" ? "蓝队" : "橙队"}得分 · 重新开球`;
+    t(team === "blue" ? "蓝队得分 · 重新开球" : "橙队得分 · 重新开球");
   goalTimer = setTimeout(() => ($("#goal").hidden = true), 2200);
   if (sound) playTone([523, 659, 784], 0.16);
 }
@@ -1219,7 +1261,8 @@ function resumeFollow() {
   freeCamera = false;
   document.body.classList.remove("free");
   $("#camera").setAttribute("aria-pressed", false);
-  $("#camera span").textContent = "自由视角";
+  $("#camera span").textContent = t("自由视角");
+  $("#camera").setAttribute("aria-label", t("自由视角"));
   const mine = ducks.get(myId);
   if (mine) {
     controls.target.set(mine.data.x, 0.177, mine.data.z);
@@ -1231,7 +1274,7 @@ async function enterGame(event) {
   event.preventDefault();
   const name = $("#player-name").value.trim();
   if (name.length < 2) {
-    $("#name-error").textContent = "请输入 2–24 个字符的玩家姓名。";
+    $("#name-error").textContent = t("请输入 2–24 个字符的玩家姓名。");
     $("#player-name").setAttribute("aria-invalid", "true");
     $("#player-name").focus();
     return;
@@ -1301,7 +1344,7 @@ $("#ai").onchange = (e) => send({ type: "ai", value: e.target.checked });
 $("#switch-team").onclick = () => send({ type: "team" });
 $("#sound").onclick = () => {
   sound = !sound;
-  $("#sound").textContent = `声音：${sound ? "开" : "关"}`;
+  $("#sound").textContent = t(sound ? "声音：开" : "声音：关");
   $("#sound").setAttribute("aria-pressed", sound);
 };
 $("#camera").onclick = () => {
@@ -1314,7 +1357,8 @@ $("#camera").onclick = () => {
   following = false;
   document.body.classList.add("free");
   $("#camera").setAttribute("aria-pressed", true);
-  $("#camera span").textContent = "跟随小鸭";
+  $("#camera span").textContent = t("跟随小鸭");
+  $("#camera").setAttribute("aria-label", t("跟随小鸭"));
   toast("自由视角：WASD 移动，Q / E 升降，拖动环顾");
 };
 $("#charge-action").onclick = () => send({ type: "charge" });
