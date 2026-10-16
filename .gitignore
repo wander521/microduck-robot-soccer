@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+.impeccable/
+PRODUCT.md
+:memory:.ses
+reference/legacy-lake-house.glb
+
+reference/duckemw-recovered/
