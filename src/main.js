@@ -1,6 +1,7 @@
 import "./style.css";
 import { assetUrl } from "./assets.js";
 import { BrowserGame } from "./browser-game.js";
+import { createIslandWorld } from "./island-world.js";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
@@ -358,45 +359,7 @@ function football() {
   return group;
 }
 function createLittleWorld() {
-  const g = new THREE.Group();
-  const land = new THREE.Mesh(
-    new THREE.CylinderGeometry(7, 5.2, 2.5, 12),
-    material(0x7b9e4d, { flatShading: true }),
-  );
-  land.position.y = -1.28;
-  land.receiveShadow = true;
-  g.add(land);
-  const under = new THREE.Mesh(
-    new THREE.ConeGeometry(5.5, 5, 12),
-    material(0x807268, { flatShading: true }),
-  );
-  under.rotation.z = Math.PI;
-  under.position.y = -4;
-  g.add(under);
-  const colors = [0x70a044, 0x82ad4e, 0x4d7e3d];
-  for (let i = 0; i < 22; i++) {
-    const angle = i * 2.4,
-      r = 3.0 + (i % 4) * 1.1,
-      x = Math.cos(angle) * r,
-      z = Math.sin(angle) * r;
-    box(0.13, 0.7, 0.13, 0x8a604b, x, 0.35, z, g);
-    const canopy = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.42 + (i % 3) * 0.08, 1),
-      material(colors[i % 3], { flatShading: true }),
-    );
-    canopy.position.set(x, 0.95, z);
-    canopy.castShadow = true;
-    g.add(canopy);
-  }
-  box(0.9, 0.65, 0.8, 0xefd7b0, -2.2, 0.325, -2.3, g);
-  const roof = new THREE.Mesh(
-    new THREE.ConeGeometry(0.78, 0.5, 4),
-    material(0x9a593e, { flatShading: true }),
-  );
-  roof.rotation.y = Math.PI / 4;
-  roof.position.set(-2.2, 0.9, -2.3);
-  g.add(roof);
-  g.visible = false;
+  const g = createIslandWorld();
   scene.add(g);
   return g;
 }
