@@ -39,3 +39,7 @@
 ## 浏览器版运行时
 
 - `src/physics/world-core.js` 与原生版共享相同的物理场景、观察量和伺服模型。浏览器使用 `@mujoco/mujoco` 3.11.0（Apache-2.0）与 `onnxruntime-web` 1.30.0（MIT）；构建时将固定版本的 WASM/JS 复制到 `assets/runtime/`，不使用 CDN。
+
+## 本地足球训练
+
+- 新增感知球位的 `football.onnx`，基于 Pollen Robotics 官方训练基座独立训练；版本、运行时合同和评估说明见 `reference/FOOTBALL_POLICY.md`。保留官方模型与 BAM 控制来源和许可证。冲撞为上层游戏能力，复用行走策略并在真实接触时施加有限物理冲量。

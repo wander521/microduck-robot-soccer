@@ -553,6 +553,9 @@ kbd {
 .play-hints button:hover {
   background: #f7d8bb;
 }
+.play-hints #charge-action {
+  min-width: 92px;
+}
 .play-hints #kick-action {
   background: #f6b176;
   color: #4b2f1f;
@@ -830,6 +833,10 @@ h1 {
   font-size: 12px;
   font-weight: 750;
 }
+.touch-actions #touch-charge {
+  background: var(--selected-marine, #263f50);
+  color: var(--paper);
+}
 .touch-actions #touch-kick {
   width: 66px;
   height: 66px;
@@ -962,7 +969,8 @@ h1 {
     gap: 0;
   }
   .play-hints > span,
-  .play-hints #kick-action {
+  .play-hints #kick-action,
+  .play-hints #charge-action {
     display: none;
   }
   .play-hints #reset-action {

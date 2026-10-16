@@ -1,3 +1,5 @@
+import { resetCharge, updateCharges } from "./charge.js";
+import { updateFootballAI, resetFootballAI } from "./football-ai.js";
 // Server-authoritative football simulation. Units: metres, seconds, radians.
 export const FIELD = {
   halfLength: 1.575,
@@ -8,8 +10,6 @@ export const FIELD = {
   runoff: 0.34,
   ballRadius: 0.05,
 };
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const angleDifference = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 export const BALL_COUNT = 1;
 export function createRoom() {
   return {
@@ -55,10 +55,12 @@ export function addPlayer(room, id, name, team) {
     p.z = room.players.size % 2 ? 0.25 : -0.25;
     p.yaw = p.team === "blue" ? 0 : Math.PI;
   }
+  resetCharge(p);
   room.players.set(id, p);
   return p;
 }
 export function resetPlayer(p) {
+  resetCharge(p);
   p.x = p.team === "blue" ? -0.2 : 0.2;
   p.z = 0;
   p.yaw = p.team === "blue" ? 0 : Math.PI;
@@ -67,11 +69,14 @@ export function resetPlayer(p) {
   p.forward = 0;
   p.turn = 0;
   p.kickRequested = false;
+  p.kickFoot = null;
+  p.kickSource = null;
   p.resetRevision = (p.resetRevision || 0) + 1;
   p.resetPose = { x: p.x, z: p.z, yaw: p.yaw };
 }
 export function resetPlay(room, player) {
   room.dancing = false;
+  resetFootballAI(room);
   resetPlayer(player);
   room.ballResetPending = true;
 }
@@ -104,38 +109,10 @@ export function syncBots(room) {
     p.yaw = p.team === "blue" ? 0 : Math.PI;
   }
 }
-function driveAI(p, room) {
-  if (p.spectator) return;
-  let closest = null,
-    d = Infinity;
-  for (const b of room.balls) {
-    const n = Math.hypot(b.x - p.x, b.z - p.z);
-    if (n < d) {
-      closest = b;
-      d = n;
-    }
-  }
-  if (!closest) return;
-  const dir = p.team === "blue" ? 1 : -1;
-  let tx = closest.x - dir * 0.13,
-    tz = closest.z; // get behind the ball before shooting
-  if (d < 0.22 && dir * (closest.x - p.x) > 0) {
-    tx = closest.x + dir * 0.16;
-    tz = closest.z * 0.3;
-  }
-  const delta = angleDifference(Math.atan2(-(tz - p.z), tx - p.x), p.yaw);
-  p.turn = clamp(delta * 2, -1, 1);
-  p.forward =
-    Math.abs(delta) < 1.2
-      ? clamp(Math.hypot(tx - p.x, tz - p.z) * 4, 0.1, 1)
-      : 0.06;
-  if (d < 0.22 && Math.abs(delta) < 0.5 && p.kick <= 0) p.kickRequested = true;
-}
 export async function tick(room) {
   if (!room.physics) throw new Error("MuJoCo physics has not been initialized");
-  if (!room.dancing)
-    for (const p of room.players.values())
-      if (p.bot || p.auto) driveAI(p, room);
+  if (!room.dancing) updateFootballAI(room, FIELD);
+  updateCharges(room);
   await room.physics.step();
 }
 export function snapshot(room) {
@@ -158,8 +135,13 @@ export function snapshot(room) {
       spectator: p.spectator,
       auto: p.auto,
       bot: !!p.bot,
+      footballRole: p.footballRole,
+      footballStage: p.footballStage,
       quack: p.quack,
       kick: p.kick,
+      charge: p.charge,
+      chargeCooldown: p.chargeCooldown,
+      chargeHit: p.chargeHit,
     })),
     balls: room.balls.map((b) => ({
       id: b.id,

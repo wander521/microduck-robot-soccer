@@ -1,0 +1,8 @@
+{
+  "src/mjlab_microduck/tasks/mdp.py": "5e5618dcd67d2c022d8331a2eed06c2081bfe57643b4b84c29e85b60bea60534",
+  "src/mjlab_microduck/tasks/microduck_football_env_cfg.py": "65ed3f33ffecf1c61fc73ada32624cea99c41465a1bbaebd040db46240cc3c46",
+  "src/mjlab_microduck/tasks/microduck_football_stable_env_cfg.py": "6b3747b7db889f58942ed5cf4692bb5988e2f46d703548d6b1dffc0769279408",
+  "src/mjlab_microduck/tasks/__init__.py": "df65a5e2b7e26e6b376c3326454af9963070cc9bd5641293f8e28563ea508a14",
+  "scripts/export.py": "3ea14f48901156ec4a8dd5f8ed7d59041a1ba31b22beb5183d5258fc854e0bc5",
+  "checkpoint": "556bc7f85c1285c066db4bb08beedaae756339d5f8867d4b4325f62b3d30edab"
+}

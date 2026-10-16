@@ -465,3 +465,67 @@ test("trained ONNX dance stays physical for a full phrase and Space cancels in-f
     assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
   } finally {world.dispose();}
 });
+
+test("ball-aware kick returns through the trained stand controller and can walk away", async () => {
+  const { room, player, world } = roomWithPlayer();
+  try {
+    world.setBall({ x: 1, z: 0.7, y: 0.05 });
+    await steps(room, 50);
+    world.setBall({ x: player.x + 0.13, z: player.z - 0.035, y: 0.05 });
+    room.balls[0] = world.readBall();
+    player.kickRequested = true;
+    player.kickSource = "manual";
+    let handoff = false,
+      peak = 0;
+    for (let i = 0; i < 200; i++) {
+      await tick(room);
+      handoff ||= world.slots.get(player.id).footballHandoff > 0;
+      peak = Math.max(peak, Math.hypot(room.balls[0].vx, room.balls[0].vz));
+      assert.equal(player.recovery, null);
+      assert.ok(projectedGravity(player.quat)[2] < -0.75);
+    }
+    assert.ok(handoff && peak > 0.5);
+    const start = { x: player.x, z: player.z, yaw: player.yaw };
+    player.forward = 1;
+    await steps(room, 125);
+    assert.ok(
+      (player.x - start.x) * Math.cos(start.yaw) -
+        (player.z - start.z) * Math.sin(start.yaw) >
+        0.1,
+    );
+  } finally {
+    world.dispose();
+  }
+});
+
+test("R requires real opponent contact; the impact can topple an opponent who then gets up", async () => {
+  const room = createRoom();
+  room.ai = false;
+  const player = addPlayer(room, "a", "Attacker", "blue");
+  Object.assign(player, { x: -0.8, z: 0 });
+  const defender = addPlayer(room, "b", "Defender", "orange");
+  Object.assign(defender, { x: -0.5, z: 0, yaw: Math.PI });
+  const world = (room.physics = new PhysicsWorld(runtime, room, FIELD));
+  try {
+    world.setBall({ x: 1.2, z: 0.7, y: 0.05 });
+    await steps(room, 50);
+    player.chargeRequested = true;
+    let hit = false,
+      fallen = false;
+    for (let i = 0; i < 250; i++) {
+      await tick(room);
+      hit ||= player.chargeHit;
+      fallen ||= projectedGravity(defender.quat)[2] > -0.5;
+      assert.ok(
+        [...world.data.qpos, ...world.data.qvel].every(Number.isFinite),
+      );
+    }
+    assert.ok(hit && fallen);
+    assert.equal(defender.recovery, null);
+    assert.ok(projectedGravity(defender.quat)[2] < -0.88);
+    assert.ok(player.chargeCooldown > 0);
+    assert.ok(world.data.qfrc_applied.every((v) => v === 0));
+  } finally {
+    world.dispose();
+  }
+});

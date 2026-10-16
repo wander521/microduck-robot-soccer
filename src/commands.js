@@ -1,3 +1,5 @@
+import { resetCharge } from "./charge.js";
+import { resetFootballAI } from "./football-ai.js";
 import { resetPlayer, resetPlay, syncBots, FIELD } from "./simulation.js";
 export function applyCommand(room, player, message) {
   if (room.dancing && !["dance", "reset", "rename"].includes(message.type))
@@ -8,20 +10,26 @@ export function applyCommand(room, player, message) {
       player.turn = Math.max(-1, Math.min(1, Number(message.turn) || 0));
       break;
     case "mode":
+      resetCharge(player);
       if (["walk", "roller"].includes(message.mode)) player.mode = message.mode;
       break;
     case "dance":
       room.dancing = !room.dancing;
+      resetFootballAI(room);
       for (const actor of room.players.values()) {
+        resetCharge(actor);
         actor.forward = 0;
         actor.turn = 0;
         actor.kickRequested = false;
+        actor.kickFoot = null;
+        actor.kickSource = null;
       }
       break;
     case "reset":
       resetPlay(room, player);
       break;
     case "spectator":
+      resetCharge(player);
       player.spectator = !player.spectator;
       if (player.spectator) {
         player.z = FIELD.halfWidth + 0.2;
@@ -31,8 +39,12 @@ export function applyCommand(room, player, message) {
         player.resetPose = { x: player.x, z: player.z, yaw: player.yaw };
       } else resetPlayer(player);
       break;
+    case "charge":
+      player.chargeRequested = true;
+      break;
     case "kick":
       player.kickRequested = true;
+      player.kickSource = "manual";
       break;
     case "quack":
       player.quack = 0.55;

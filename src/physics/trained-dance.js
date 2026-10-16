@@ -1,3 +1,4 @@
+import { clearChargeImpacts } from "./charge-impact.js";
 import { DEFAULT_POSE, CONTROL_DT, OBS_SIZE, projectedGravity } from "./constants.js";
 import { danceCommand } from "./dance-command.js";
 import { DanceFormation } from "./dance-formation.js";
@@ -23,6 +24,7 @@ function restorePose(world, player, state, heightOffset = 0) {
 }
 
 export function beginPolicyDance(world) {
+  clearChargeImpacts(world);
   if (!world.runtime.policies.dance || !world.runtime.templates.dance)
     throw new Error("Trained dance assets are not loaded");
   const states = world.saveStates();

@@ -772,6 +772,33 @@ function updateSceneState(state) {
       $("#you-orange").hidden = player.team !== "orange";
       $("#switch-team").textContent =
         player.team === "blue" ? "换到橙队" : "换到蓝队";
+      const cooldown = Math.ceil(player.chargeCooldown || 0);
+      const charging = player.charge > 0;
+      const chargeLabel = charging
+        ? "冲撞中"
+        : cooldown
+          ? cooldown + "s"
+          : "冲撞";
+      const chargeDisabled =
+        dancing ||
+        player.spectator ||
+        player.mode !== "walk" ||
+        !!player.recovery ||
+        player.kick > 0 ||
+        cooldown > 0;
+      for (const button of [$("#charge-action"), $("#touch-charge")]) {
+        button.disabled = chargeDisabled;
+        button.setAttribute(
+          "aria-label",
+          charging
+            ? "冲撞中"
+            : cooldown
+              ? "冲撞冷却，剩余 " + cooldown + " 秒"
+              : "加速冲撞",
+        );
+      }
+      $("#charge-action span").textContent = chargeLabel;
+      $("#touch-charge").textContent = chargeLabel;
       auto = player.auto;
       spectator = player.spectator;
       $("#autoplay").setAttribute("aria-pressed", auto);
@@ -845,7 +872,7 @@ function updateDanceUI(dance) {
     $("#dance-banner").hidden = !active;
     document.body.classList.toggle("dancing", active);
     for (const el of $$(
-      "[data-mode],#ai,#switch-team,#autoplay,#camera,#kick-action,#touch-kick",
+      "[data-mode],#ai,#switch-team,#autoplay,#camera,#kick-action,#touch-kick,#charge-action,#touch-charge",
     ))
       el.disabled = active;
     if (active) {
@@ -1204,6 +1231,7 @@ $("#camera").onclick = () => {
   $("#camera span").textContent = "跟随小鸭";
   toast("自由视角：WASD 移动，Q / E 升降，拖动环顾");
 };
+$("#charge-action").onclick = () => send({ type: "charge" });
 $("#kick-action").onclick = () => send({ type: "kick" });
 $("#dance-action").onclick = () => send({ type: "dance" });
 function resetMatch() {
@@ -1243,6 +1271,7 @@ addEventListener("keydown", (e) => {
   }
   if (e.code === "KeyM") quack();
   if (e.code === "KeyF") send({ type: "kick" });
+  if (e.code === "KeyR") send({ type: "charge" });
   if (e.code === "KeyC") resumeFollow();
   if (e.code === "Escape") {
     $("#keys").open = !$("#keys").open;
@@ -1296,6 +1325,7 @@ $$("[data-key]").forEach((b) => {
   b.addEventListener("lostpointercapture", release);
 });
 $("#touch-quack").onclick = quack;
+$("#touch-charge").onclick = () => send({ type: "charge" });
 $("#touch-kick").onclick = () => send({ type: "kick" });
 addEventListener("resize", () => {
   if (!renderer) return;

@@ -1,3 +1,11 @@
+import { applyChargeImpacts, clearChargeImpacts } from "./charge-impact.js";
+import { resetCharge, chargeVelocity } from "../charge.js";
+import {
+  footballCommand,
+  setFootballActive,
+  advanceFootballTargets,
+} from "./football-policy.js";
+import { kickingFoot } from "../football-ai.js";
 import { XMLSerializer } from "@xmldom/xmldom";
 import {
   JOINT_NAMES,
@@ -52,7 +60,9 @@ function buildXml(runtime, players, field) {
         m.getAttribute("name") || m.getAttribute("file").replace(/\.stl$/, ""),
     ),
   );
-  for (const mesh of Object.values(runtime.templates).flatMap(template=>elements(template, "mesh"))) {
+  for (const mesh of Object.values(runtime.templates).flatMap((template) =>
+    elements(template, "mesh"),
+  )) {
     const name =
       mesh.getAttribute("name") ||
       mesh.getAttribute("file").replace(/\.stl$/, "");
@@ -64,7 +74,9 @@ function buildXml(runtime, players, field) {
   const materialNames = new Set(
     elements(assets, "material").map((m) => m.getAttribute("name")),
   );
-  for (const mat of Object.values(runtime.templates).flatMap(template=>elements(template, "material")))
+  for (const mat of Object.values(runtime.templates).flatMap((template) =>
+    elements(template, "material"),
+  ))
     if (!materialNames.has(mat.getAttribute("name"))) {
       assets.appendChild(doc.importNode(mat, true));
       materialNames.add(mat.getAttribute("name"));
@@ -141,7 +153,10 @@ function buildXml(runtime, players, field) {
   }
   players.forEach((p, i) => {
     const prefix = `duck${i}_`,
-      template = runtime.templates[p.danceActor ? "dance" : p.mode === "roller" ? "roller" : "walk"];
+      template =
+        runtime.templates[
+          p.danceActor ? "dance" : p.mode === "roller" ? "roller" : "walk"
+        ];
     const body = elements(template, "worldbody")[0].getElementsByTagName(
       "body",
     )[0];
@@ -201,6 +216,7 @@ function poseYaw(q) {
 export class PhysicsWorld {
   constructor(runtime, room, field) {
     this.runtime = runtime;
+    room.footballPolicy = runtime.footballInfo || null;
     this.room = room;
     this.field = field;
     this.signature = "";
@@ -247,6 +263,8 @@ export class PhysicsWorld {
     this.model?.delete();
     this.model = model;
     this.data = data;
+    clearChargeImpacts(this);
+    this.geomPlayers = new Map();
     this.slots.clear();
     players.forEach((p, i) => {
       const prefix = `duck${i}_`,
@@ -278,6 +296,7 @@ export class PhysicsWorld {
         recovery: null,
         recoveryTime: 0,
         kickTime: 0,
+        footballHandoff: 0,
         kickLock: 0,
         kickSide: false,
         feet: ["left_foot_collision", "right_foot_collision"]
@@ -288,7 +307,9 @@ export class PhysicsWorld {
         extra: [],
       };
       const template =
-        this.runtime.templates[p.danceActor ? "dance" : p.mode === "roller" ? "roller" : "walk"];
+        this.runtime.templates[
+          p.danceActor ? "dance" : p.mode === "roller" ? "roller" : "walk"
+        ];
       for (const j of elements(elements(template, "worldbody")[0], "joint")) {
         const name = j.getAttribute("name");
         if (name && !JOINT_NAMES.includes(name))
@@ -299,6 +320,17 @@ export class PhysicsWorld {
           });
       }
       this.slots.set(p.id, slot);
+      for (let g = 0; g < model.ngeom; g++) {
+        const name = mj.mj_id2name(model, mj.mjtObj.mjOBJ_GEOM.value, g);
+        // Mesh collision geoms are unnamed: match their owning body's namespace.
+        const body = mj.mj_id2name(
+          model,
+          mj.mjtObj.mjOBJ_BODY.value,
+          model.geom_bodyid[g],
+        );
+        if (name?.startsWith(prefix) || body?.startsWith(prefix))
+          this.geomPlayers.set(g, p.id);
+      }
       const previous = saved.get(p.id);
       if (
         previous &&
@@ -324,6 +356,8 @@ export class PhysicsWorld {
   reset(p) {
     const slot = this.slots.get(p.id);
     if (!slot) return;
+    resetCharge(p);
+    clearChargeImpacts(this);
     const q = this.data.qpos,
       v = this.data.qvel;
     const h = p.mode === "roller" ? 0.1385 : 0.125,
@@ -355,7 +389,9 @@ export class PhysicsWorld {
     slot.recovery = null;
     slot.recoveryTime = 0;
     slot.kickTime = 0;
+    slot.footballHandoff = 0;
     slot.kickLock = 0;
+    setFootballActive(this, slot, false);
     slot.resetRevision = p.resetRevision || 0;
   }
   setBall(ball) {
@@ -437,38 +473,68 @@ export class PhysicsWorld {
       if (
         p.mode === "walk" &&
         !slot.recovery &&
+        !(p.charge > 0) &&
         slot.kickTime === 0 &&
+        !slot.footballHandoff &&
         slot.kickLock === 0
       ) {
-        slot.kickTime = 0.5;
-        slot.kickSide = !slot.kickSide;
+        slot.kickTime = runtime.footballInfo?.windowSeconds || 0.5;
+        const ball = this.room.balls[0];
+        slot.footballAim =
+          p.kickSource === "manual"
+            ? { x: Math.cos(p.yaw), z: -Math.sin(p.yaw) }
+            : {
+                x:
+                  (p.team === "blue" ? 1 : -1) * (this.field.halfLength + 0.1) -
+                  ball.x,
+                z: -ball.z,
+              };
+        slot.kickSide =
+          (p.kickFoot || kickingFoot(p, this.room.balls[0])) === "left";
       }
       p.kickRequested = false;
+      p.kickFoot = null;
+      p.kickSource = null;
     }
     const command =
-      slot.recovery || slot.kickTime > 0 || slot.kickLock > 0
+      slot.recovery ||
+      slot.footballHandoff > 0 ||
+      slot.kickTime > 0 ||
+      slot.kickLock > 0
         ? [0, 0, 0]
-        : velocityCommand(p.forward, p.turn, p.mode);
+        : chargeVelocity(p) || velocityCommand(p.forward, p.turn, p.mode);
+    const ballAware =
+      !!runtime.policies.football && slot.kickTime > 0 && !slot.recovery;
+    setFootballActive(this, slot, ballAware);
     const obs = slot.obs;
     let i = 0;
     for (let a = 0; a < 3; a++) obs[i++] = data.sensordata[slot.gyro + a];
     for (const value of gravity) obs[i++] = value;
     for (let j = 0; j < 14; j++) obs[i++] = q[slot.qpos[j]] - DEFAULT_POSE[j];
-    for (let j = 0; j < 14; j++) obs[i++] = v[slot.dof[j]];
+    for (let j = 0; j < 14; j++) {
+      obs[i++] = ballAware ? slot.footballVelocity[j] : v[slot.dof[j]];
+      if (ballAware) slot.footballVelocity[j] = v[slot.dof[j]];
+    }
     for (let j = 0; j < 14; j++) obs[i++] = slot.lastAction[j];
     obs.fill(0, i);
     for (let a = 0; a < 3; a++) obs[i + a] = command[a];
+    if (ballAware)
+      obs.set(
+        footballCommand(p, this.room.balls[0], this.field, slot.footballAim),
+        55,
+      );
     if (slot.recovery !== "settle") {
-      const key = slot.recovery
-        ? "stand"
-        : slot.kickTime > 0
-          ? slot.kickSide
-            ? "kickL"
-            : "kickR"
-          : p.mode === "roller"
-            ? "roller"
-            : "walk";
-      const session = runtime.policies[key];
+      const key =
+        slot.recovery || slot.footballHandoff > 0
+          ? "stand"
+          : slot.kickTime > 0
+            ? slot.kickSide
+              ? "kickL"
+              : "kickR"
+            : p.mode === "roller"
+              ? "roller"
+              : "walk";
+      const session = runtime.policies[ballAware ? "football" : key];
       const out = await session.run({
         [session.inputNames[0]]: new runtime.ort.Tensor("float32", obs, [
           1,
@@ -476,7 +542,7 @@ export class PhysicsWorld {
         ]),
       });
       const action = out[session.outputNames[0]].data;
-      if (!action.every(Number.isFinite))
+      if (action.length !== 14 || !action.every(Number.isFinite))
         throw new Error("Non-finite policy action");
       slot.lastAction.set(action);
       slot.ctrl.forEach(
@@ -485,9 +551,20 @@ export class PhysicsWorld {
     }
     if (slot.kickTime > 0) {
       slot.kickTime = Math.max(0, slot.kickTime - CONTROL_DT);
-      if (slot.kickTime === 0) slot.kickLock = 0.4;
+      if (slot.kickTime === 0) {
+        slot.kickLock = 0.4;
+        if (ballAware) {
+          // Seed the trained stand controller from the physical pose before walking.
+          slot.footballHandoff = 1;
+          slot.lastAction.set(
+            slot.qpos.map((address, j) => q[address] - DEFAULT_POSE[j]),
+          );
+        }
+      }
     } else slot.kickLock = Math.max(0, slot.kickLock - CONTROL_DT);
-    p.kick = slot.kickTime + slot.kickLock;
+    if (!ballAware && slot.footballHandoff > 0)
+      slot.footballHandoff = Math.max(0, slot.footballHandoff - CONTROL_DT);
+    p.kick = slot.kickTime + slot.kickLock + slot.footballHandoff;
     p.recovery = slot.recovery;
   }
   async step() {
@@ -531,6 +608,8 @@ export class PhysicsWorld {
       this.room.ballResetPending = false;
     }
     for (let i = 0; i < 4; i++) {
+      advanceFootballTargets(this.slots);
+      applyChargeImpacts(this);
       updateServos(this);
       this.runtime.mj.mj_step(this.model, this.data);
     }
@@ -621,6 +700,7 @@ export class PhysicsWorld {
       name: "MuJoCo",
       version: this.runtime.engineVersion,
       actuator: "BAM M6 / XL330",
+      footballPolicy: this.runtime.footballInfo?.id || null,
       policyHz: 50,
       physicsHz: 200,
       simulationTime: this.elapsed,

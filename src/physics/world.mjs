@@ -13,7 +13,7 @@ export function loadPhysicsRuntime() {
       readText: (path) => readFile(resolve("public/assets", path), "utf8"),
       readBinary: (path) => readFile(resolve("public/assets", path)),
       createPolicy: (path) =>
-        ort.InferenceSession.create(resolve("public/assets", path), {
+        ort.InferenceSession.create(resolve("public/assets", path.split("?")[0]), {
           executionProviders: ["cpu"],
           intraOpNumThreads: 1,
           interOpNumThreads: 1,

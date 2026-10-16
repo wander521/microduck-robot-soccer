@@ -21,7 +21,7 @@
     <main id="game" aria-label="小鸭开球三维足球场">
       <canvas
         id="world"
-        aria-label="使用 W、S 移动，A、D 转向，F 踢球"
+        aria-label="使用 W、S 移动，A、D 转向，F 踢球，R 冲撞"
       ></canvas>
     </main>
     <header class="game-brand">
@@ -88,6 +88,10 @@
               <dd>起脚射门</dd>
             </div>
             <div>
+              <dt><kbd>R</kbd></dt>
+              <dd>加速冲撞 · 冷却 9 秒</dd>
+            </div>
+            <div>
               <dt><kbd>Space</kbd></dt>
               <dd>小鸭和足球归位</dd>
             </div>
@@ -117,7 +121,8 @@
                 射门；蓝队向橙色球门进攻。月球基地保留正常重力，方便稳稳控球。
               </p>
               <p>
-                MicroDuck 模型与步态来自 Pollen Robotics。舞蹈使用单独训练的 DuckEMW 策略，场景为本地原创。
+                MicroDuck 模型与步态来自 Pollen Robotics。舞蹈使用单独训练的
+                DuckEMW 策略，场景为本地原创。
               </p>
               <p>
                 <a
@@ -135,7 +140,9 @@
                 >
               </p>
               <p>
-                <a href="%BASE_URL%licenses/LICENSE-APACHE-2.0.txt" target="_blank"
+                <a
+                  href="%BASE_URL%licenses/LICENSE-APACHE-2.0.txt"
+                  target="_blank"
                   >Apache-2.0 软件</a
                 >
                 ·
@@ -190,6 +197,8 @@
     <div class="play-hints">
       <span><kbd>W A S D</kbd> 移动</span
       ><button id="kick-action"><kbd>F</kbd> 射门</button
+      ><button id="charge-action" title="加速冲撞对手，冷却 9 秒">
+        <kbd>R</kbd><span>冲撞</span></button
       ><button id="dance-action" aria-pressed="false">
         <kbd>X</kbd><span>一起跳舞</span></button
       ><button id="reset-action"><kbd>Space</kbd> 重新开球</button>
@@ -216,6 +225,7 @@
       </div>
       <div class="touch-actions">
         <button id="touch-quack">嘎嘎</button
+        ><button id="touch-charge" aria-label="冲撞，冷却 9 秒">冲撞</button
         ><button id="touch-kick">射门</button>
       </div>
     </div>
