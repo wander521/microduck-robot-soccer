@@ -33,7 +33,7 @@
 ## 字体与舞蹈参考
 
 - Bungee Regular：David Jonathan Ross，SIL Open Font License 1.1。字体与完整许可保存在 `public/assets/fonts/`，来源 https://github.com/google/fonts/tree/main/ofl/bungee 。
-- 舞蹈训练参考 https://github.com/emwstudio/DuckEMW ，部署的是本项目另一项训练任务导出的预览检查点，来源、版本与部署契约见 `reference/DANCE_POLICY.md` 和策略 manifest；没有复制上游未公开权重或歌曲。舞蹈动作由 ONNX 与 MuJoCo 实际推理，旧关节关键帧已移除；本地 Web Audio 只合成节拍。
+- 舞蹈训练参考 https://github.com/emwstudio/DuckEMW ，部署的是本项目另一项训练任务完成 4000 轮训练后导出的第 3500 轮检查点，来源、版本与部署契约见 `reference/DANCE_POLICY.md` 和策略 manifest；没有复制上游未公开权重或歌曲。舞蹈动作由 ONNX 与 MuJoCo 实际推理，旧关节关键帧已移除；本地 Web Audio 只合成节拍。
 - `public/assets/robot/robot_dance.xml` 和四个 `meshes/dance_*.stl` 来自 Pollen Robotics 官方训练基座 `5946fd9` 的 walk 模型；移除视觉几何并改碰撞资源名以匹配训练接触模型。几何仍按 CC BY-NC-SA 4.0 署名与分发，相关代码沿用 Apache-2.0。
 
 ## 浏览器版运行时
