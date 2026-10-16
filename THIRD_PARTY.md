@@ -8,12 +8,6 @@
 - `src/duck-rig.js` 改编自上述 Space 的 `app/src/game/duck.js`，主要调整本地资源路径与材质，代码许可 Apache-2.0；完整许可证见 `reference/LICENSE-APACHE-2.0`。
 - `public/assets/robot/microduck.glb`、`kinematics.json` 取自上述 Space。机器人三维模型由 **Pollen Robotics** 创作，模型许可 **CC BY-NC-SA 4.0**，详见 `reference/LICENSE-MODELS.md` 及 https://creativecommons.org/licenses/by-nc-sa/4.0/ 。本项目没有更改 GLB 几何文件；运行时配置了不同材质颜色；足球动作来自 MuJoCo / ONNX 策略，舞蹈是单独的原创编舞。
 
-## 参考场景
-
-- 参考页面：https://fpvsim.com/zh-cn/sim-duck?scene=lake-house
-- `reference/legacy-lake-house.glb`（已停用、不随网页分发）来源：https://fpvsim.com/q/client/glbs/lake-house.glb?v=1
-- 该场景已按用户要求从游戏和发布资源中移除，仅保留本地参考归档。当前月球基地与浮空小岛为原创程序场景。
-
 ## 库
 
 - Three.js（MIT），https://github.com/mrdoob/three.js

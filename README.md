@@ -1,58 +1,43 @@
-# MicroDuck 足球 · 本地版
+# 小鸭开球！
 
-在月球基地和浮空小岛踢球、跳舞的本地单人小游戏，使用 Pollen Robotics 官方机器人模型。
+四只 MicroDuck 在月球基地或浮空小岛进行 2v2 足球比赛，也可以一起列队跳舞。
 
-## 运行
+**[点击游玩](https://wander521.github.io/sim-duck/)**
 
-需要 Node.js 18.18+（推荐 Node.js 22 LTS），macOS / Linux / Windows 上使用 onnxruntime-node 的本机 CPU 推理包，无需 GPU。
+## 当前版本与分支
+
+- **`github-pages`**：当前公开版本，MuJoCo WASM 与 ONNX Runtime Web 在浏览器 Worker 中运行，不需要游戏后端。
+- **`feat/football-team-control`**：当前足球控制与比赛规则开发分支。
+- **`main`**：保留早期 Node.js 本地服务实现，不代表当前网页的策略和功能。
+
+当前网页支持五分钟比赛、进球后全场归位与 3 秒准备、蓝橙队色、R 加速冲撞、X 行走集合并使用训练舞蹈、键盘与手机触屏操作。每个标签页独立单人比赛，没有联机功能。
+
+## 使用与开发文档
+
+完整说明维护在当前发布分支：
+
+| 文档 | 内容 |
+| --- | --- |
+| [README](https://github.com/wander521/sim-duck/blob/github-pages/README.md) | 比赛规则、全部操作、本地运行、架构、测试与部署 |
+| [策略清单](https://github.com/wander521/sim-duck/blob/github-pages/reference/POLICIES.md) | 7 个 ONNX 文件、来源、调用条件、SHA-256 与替换步骤 |
+| [比赛规则](https://github.com/wander521/sim-duck/blob/github-pages/reference/MATCH_RULES.md) | 计时、胜负、全场归位、队色与冲撞条件 |
+| [足球策略与评估](https://github.com/wander521/sim-duck/blob/github-pages/reference/FOOTBALL_POLICY.md) | 球位感知踢球训练、团队 AI、冲撞实现与测试 |
+| [舞蹈策略](https://github.com/wander521/sim-duck/blob/github-pages/reference/DANCE_POLICY.md) | 独立舞蹈训练、检查点、运行契约与验证 |
+| [资源与许可证](https://github.com/wander521/sim-duck/blob/github-pages/THIRD_PARTY.md) | 官方模型、代码、字体与依赖的来源和许可 |
+
+当前网页使用官方行走、起身和轮滑权重，配合本项目独立训练的球位感知踢球及舞蹈权重；官方左右脚踢球模型保留作兼容路径。团队战术和冲撞时机由规则控制，冲撞复用行走网络，没有独立冲撞神经网络。
+
+## 运行当前网页版本
+
+需要 Node.js 22+：
 
 ```sh
-npm install
+git clone --branch github-pages https://github.com/wander521/sim-duck.git
+cd sim-duck
+npm ci
 npm run dev
 ```
 
-打开 http://localhost:5173 。资源均保存在本地，启动后无需访问 FPVSIM、Hugging Face 或 CDN。
+默认打开 `http://localhost:5173/`。GitHub Pages 构建、子路径预览和策略替换，请按发布分支 README 操作。
 
-比赛只在本机运行，不提供联机、房间或邀请。默认由三只 AI 机器鸭陪练，可在游戏菜单关闭。每个浏览器窗口都有独立比赛。
-
-## 操作
-
-| 操作 | 按键 |
-| --- | --- |
-| 前进 / 后退 | W / S 或 ↑ / ↓ |
-| 左转 / 右转 | A / D 或 ← / → |
-| 踢球 | F |
-| 张嘴、嘎嘎 | M |
-| 小鸭与足球归位 / 退出跳舞 | Space |
-| 排成一排跳舞 / 继续比赛 | X |
-| 观众 / 场外漫游 | E |
-| 恢复跟随视角 | C |
-| 环顾 / 缩放 | 鼠标拖动 / 滚轮 |
-| 自由视角移动 | 工具栏“自由视角”，WASD 移动，Q / E 升降 |
-
-手机支持触摸方向键、踢球与嘎嘎。底角可切换月球基地 / 浮空小岛、行走 / 轮滑。右上游戏菜单内可开关 AI、自动踢球、换队、声音。
-
-## 实现范围
-
-- Three.js 渲染、官方分关节模型，直接显示物理计算得到的身体姿态、关节角和被动轮转动。
-- Node.js 服务端以 MuJoCo 3.11 进行 200 Hz 多机器人与单球物理仿真，以官方 ONNX 策略进行 50 Hz 控制；WebSocket 以 50 Hz 同步姿态与唯一足球。
-- AI 采用追球、绕到球后和瞄准球门的规则控制。
-- 机器人行走、滚轮、踢球、起身使用 Pollen Robotics 预训练策略；伺服采用训练项目的 XL330 / BAM M6 电压、反电动势、摩擦与惯量模型。按键提交目标速度，不直接平移或旋转身体。本项目未重新训练策略。
-- 月球基地与浮空小岛为原创程序场景。球场长宽各放大到原来的 1.5 倍（3.15 × 1.86 m），边线外有 .34 m 活动区，贴边低速球轻微回场。
-- X 启用原创 128 BPM 舞蹈，按用户视频参考放大蹲起、摆胯和甩头；实际脚底几何校正贴地。舞蹈是暂停物理后的关键帧表演，退出还原比赛，不是 DuckEMW ONNX 推理。
-- 已保留官方模型与代码归属，详见 [THIRD_PARTY.md](THIRD_PARTY.md)。
-
-## 验证和构建
-
-```sh
-npm test
-npm run build
-```
-
-`npm run build` 生成 `dist/`。比赛服务通过 `npm start` 启动，可用 `PORT=8080 npm start` 改端口。`npm run preview` 仅用于静态画面预览，不含本机物理比赛服务。
-
-在游戏服务已运行时，执行 `RUN_NETWORK_TESTS=1 npm test` 可额外验证本机控制、X 舞蹈切换和多窗口单人隔离。桌面、手机截图与验证记录保存在 `.impeccable/review/`。
-
-当前场上始终只有一个共享足球。行走速度指令为前后 ±0.3 m/s、转向 ±1.5 rad/s；滚轮采用前进 0.6 m/s、后退 0.5 m/s、转向 0.3 rad/s。这些是策略目标值，实际速度由接触、摩擦和策略决定。
-
-真实碰撞覆盖足球场、球门、机器人和足球；场外装饰几何暂未加入碰撞世界。
+机器人模型来自 Pollen Robotics；其几何资源采用 CC BY-NC-SA 4.0。相关上游代码与依赖许可见各版本的 THIRD_PARTY.md。
