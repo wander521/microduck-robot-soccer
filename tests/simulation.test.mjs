@@ -288,7 +288,7 @@ test("a stationary ball is gently released from a sideline and corner", async ()
   }
 });
 
-test("X forms a synchronized line, dances, freezes the match and restores physics", async () => {
+test("X walks through real policy contacts into a line before starting the dance", async () => {
   const { room, player, world } = roomWithPlayer();
   try {
     room.ai = true;
@@ -299,37 +299,117 @@ test("X forms a synchronized line, dances, freezes the match and restores physic
     world.setBall({ x: 0.42, z: 0.12, y: 0.05, vx: 0.2 });
     const ball = world.readBall();
     const simulationTime = world.data.time;
+    let policyCalls = 0, moved = false, peakJointChange = 0;
+    const control = world.control.bind(world);
+    world.control = async (...args) => { policyCalls++; await control(...args); };
     room.dancing = true;
-    await steps(room, 75);
-    const actors = [...room.players.values()];
+    await tick(room);
+    assert.equal(room.dance.phase, "forming");
+    assert.equal(room.dance.beat, 0);
+    let previous = world.saveStates();
+    for (let i = 0; i < 1250 && room.dance.phase !== "dancing"; i++) {
+      await tick(room);
+      for (const p of room.players.values()) {
+        const before = previous.get(p.id).position;
+        assert.ok(Math.hypot(p.x - before[0], p.z + before[1]) < 0.025,
+          "no root-position jump while forming or at the dance handoff");
+        moved ||= Math.hypot(p.x - saved.get(p.id).position[0], p.z + saved.get(p.id).position[1]) > 0.1;
+        peakJointChange = Math.max(peakJointChange,
+          ...p.joints.map((v, j) => Math.abs(v - saved.get(p.id).joints[j])));
+      }
+      previous = world.saveStates();
+    }
+    assert.equal(room.dance.phase, "dancing");
+    assert.ok(policyCalls > 100 && moved && peakJointChange > 0.1);
+    assert.ok(world.data.time > simulationTime + 2, "formation uses actual physics steps");
+    const actors = [...room.players.values()].sort((a, b) => a.x - b.x);
     assert.equal(actors.length, 4);
     assert.equal(room.dance.bpm, 128);
     actors.forEach((p, i) => {
-      assert.ok(Math.abs(p.x - (i - 1.5) * 0.48) < 0.03);
-      assert.ok(Math.abs(p.z + 0.12) < 1e-8);
+      assert.ok(Math.abs(p.x - (i - 1.5) * 0.48) < 0.085);
+      assert.ok(Math.abs(p.z + 0.12) < 0.085);
       assert.ok(p.joints.every(Number.isFinite));
     });
+    const pausedTime = world.data.time;
+    await steps(room, 75);
     const pose = [...player.joints];
     await steps(room, 10);
     assert.ok(player.joints.some((v, j) => Math.abs(v - pose[j]) > 0.02));
     assert.deepEqual(room.scores, scores);
-    assert.equal(world.data.time, simulationTime);
+    assert.equal(world.data.time, pausedTime, "only the choreography pauses robot physics");
     assert.ok(Math.abs(room.balls[0].x - ball.x) < 1e-8);
     assert.ok(Math.abs(room.balls[0].vx - ball.vx) < 1e-8);
     room.dancing = false;
     await tick(room);
     assert.equal(room.dance, null);
     assert.ok(Math.abs(player.x - saved.get(player.id).position[0]) < 0.02);
-    assert.ok(world.data.time > simulationTime);
-    // Space also exits the interlude and resets both actors and football.
+    assert.ok(world.data.time > pausedTime);
+    // Space must also cancel while the robots are still walking to the line.
     room.dancing = true;
-    await steps(room, 60);
+    await steps(room, 25);
+    assert.equal(room.dance.phase, "forming");
     resetPlay(room, player);
     await tick(room);
     assert.equal(room.dance, null);
     assert.ok(Math.abs(player.x + 0.2) < 0.01);
     assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
-  } finally {
-    world.dispose();
+  } finally { world.dispose(); }
+});
+
+test("formation completes from crowded and dispersed starts without exchanging left-to-right slots", async () => {
+  for (const poses of [
+    [[-.3, 0, 0], [0, 0, Math.PI], [.3, 0, 1], [0, -.3, -1]],
+    [[-1.2, -.65, 1], [1.2, .65, -2], [-.5, .6, 0], [.6, -.65, 2]],
+  ]) {
+    const room = createRoom(); room.ai = false;
+    poses.forEach(([x, z, yaw], i) => {
+      const p = addPlayer(room, String(i), "Duck");
+      p.resetPose = {x, z, yaw};
+    });
+    const world = room.physics = new PhysicsWorld(runtime, room, FIELD);
+    try {
+      await steps(room, 50);
+      const order = [...room.players.values()].sort((a, b) => a.x - b.x).map(p => p.id);
+      room.dancing = true;
+      for (let i = 0; i < 1500 && room.dance?.phase !== "dancing"; i++) await tick(room);
+      assert.equal(room.dance.phase, "dancing");
+      const actors = [...room.players.values()].sort((a, b) => a.x - b.x);
+      assert.deepEqual(actors.map(p => p.id), order);
+      for (const p of actors) {
+        assert.ok(p.height > .08);
+        assert.ok(Math.abs(p.z + .12) < .09);
+      }
+    } finally { world.dispose(); }
   }
+});
+
+test("X cancels formation and restores roller mode; Space during inference still resets the ball", async () => {
+  const {room, player, world} = roomWithPlayer();
+  try {
+    player.mode = "roller";
+    await steps(room, 50);
+    const before = world.saveStates().get(player.id);
+    room.dancing = true;
+    await steps(room, 25);
+    assert.equal(player.mode, "walk");
+    room.dancing = false;
+    await tick(room);
+    assert.equal(room.dance, null);
+    assert.equal(player.mode, "roller");
+    assert.ok(Math.abs(player.x - before.position[0]) < .02);
+    assert.equal(world.slots.get(player.id).extra.length, 4);
+    world.setBall({x:.6, z:.4, vx:1, angular:[1,2,3]});
+    const control = world.control.bind(world);
+    let reset = false;
+    world.control = async (...args) => {
+      await control(...args);
+      if (!reset) {reset = true; resetPlay(room, player);}
+    };
+    room.dancing = true;
+    await tick(room);
+    assert.equal(room.dance, null);
+    assert.equal(player.mode, "roller");
+    assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
+    assert.ok(Math.hypot(room.balls[0].vx, room.balls[0].vz) < 1e-8);
+  } finally {world.dispose();}
 });

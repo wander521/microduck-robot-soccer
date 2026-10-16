@@ -30,6 +30,7 @@ let entered = false,
   auto = false,
   spectator = false,
   dancing = false,
+  dancePerforming = false,
   danceCamera = null,
   lastDanceBeat = -1,
   lastGoalRevision = 0,
@@ -853,9 +854,10 @@ function updateDanceUI(dance) {
         freeCamera,
       };
       following = false;
-      camera.position.set(0, 0.85, 2.15);
-      controls.target.set(0, 0.18, -0.12);
-      camera.zoom = Math.min(1, Math.max(0.55, camera.aspect / 0.9));
+      dancePerforming = false;
+      camera.position.set(1.9, 2.077, 2.3);
+      controls.target.set(0, 0.177, 0);
+      camera.zoom = Math.min(1, Math.max(0.52, camera.aspect / 1.18));
     } else if (danceCamera) {
       camera.position.copy(danceCamera.position);
       controls.target.copy(danceCamera.target);
@@ -868,9 +870,20 @@ function updateDanceUI(dance) {
     controls.update();
   }
   if (!dance) return;
-  $("#dance-move").textContent = dance.time < 1 ? "全体集合！" : dance.move;
+  const performing = dance.phase === "dancing";
+  if (performing && !dancePerforming) {
+    dancePerforming = true;
+    camera.position.set(0, 0.85, 2.15);
+    controls.target.set(0, 0.18, -0.12);
+    camera.zoom = Math.min(1, Math.max(0.55, camera.aspect / 0.9));
+    camera.updateProjectionMatrix();
+    controls.update();
+  }
+  $("#dance-move").textContent = !performing
+    ? dance.phase === "settling" ? "站稳了，准备开跳" : `正在集合 · ${dance.ready}/${dance.total} 就位`
+    : dance.time < 1 ? "准备开跳！" : dance.move;
   const beat = Math.floor(dance.beat);
-  if (beat !== lastDanceBeat && dance.time > 1) {
+  if (performing && beat !== lastDanceBeat && dance.time > 1) {
     lastDanceBeat = beat;
     if (sound) playDanceBeat(beat);
   }

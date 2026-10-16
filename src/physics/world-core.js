@@ -9,6 +9,7 @@ import {
   projectedGravity,
 } from "./constants.js";
 import { dancePose, DANCE_BPM } from "../dance.js";
+import { DanceFormation, FORMATION_Z } from "./dance-formation.js";
 import { BAM, MAX_TORQUE, updateServos } from "./servo.mjs";
 const elements = (node, tag) => [...node.getElementsByTagName(tag)];
 function element(doc, tag, attrs = {}) {
@@ -494,7 +495,7 @@ export class PhysicsWorld {
     const start = performance.now();
     if (this.signature !== this.rosterSignature()) this.rebuild();
     if (this.room.dancing) {
-      this.stepDance();
+      await this.stepDance();
       return;
     }
     if (this.danceSaved) this.endDance();
@@ -504,7 +505,7 @@ export class PhysicsWorld {
       ),
     );
     if (this.room.dancing) {
-      this.stepDance();
+      await this.stepDance();
       return;
     }
     // A reset may arrive while policy inference is awaiting its result.
@@ -540,17 +541,73 @@ export class PhysicsWorld {
     this.syncState();
     this.lastStepMs = performance.now() - start;
   }
-  stepDance() {
+  async stepDance() {
     if (!this.danceSaved) {
       this.danceSaved = {
         qpos: new Float64Array(this.data.qpos),
         qvel: new Float64Array(this.data.qvel),
         goal: this.room.goal,
+        ball: this.readBall(),
+        modes: new Map([...this.room.players.values()].map(p => [p.id, p.mode])),
+        controllers: new Map([...this.slots].map(([id, slot]) => [id, {
+          targets: new Float64Array(slot.targets),
+          lastAction: new Float32Array(slot.lastAction),
+          fallenFor: slot.fallenFor, recovery: slot.recovery,
+          recoveryTime: slot.recoveryTime, kickTime: slot.kickTime,
+          kickLock: slot.kickLock, kickSide: slot.kickSide,
+        }])),
       };
+      // Put roller actors on their walking feet for the procession, then restore
+      // their original model and complete physical state when leaving the dance.
+      const before = this.saveStates();
+      const rollers = [...this.room.players.values()].filter(p => p.mode === "roller");
+      if (rollers.length) {
+        rollers.forEach(p => { p.mode = "walk"; });
+        this.rebuild();
+        for (const p of rollers) {
+          const slot = this.slots.get(p.id), saved = before.get(p.id);
+          this.data.qpos.set(saved.position, slot.baseQ);
+          this.data.qpos[slot.baseQ + 2] -= 0.0135;
+          this.data.qvel.set(saved.velocity, slot.baseV);
+          slot.qpos.forEach((a, j) => { this.data.qpos[a] = saved.joints[j]; });
+          slot.dof.forEach((a, j) => { this.data.qvel[a] = saved.jointV[j]; });
+        }
+        this.runtime.mj.mj_forward(this.model, this.data);
+        this.syncState();
+      }
+      this.formation = new DanceFormation([...this.room.players.values()]);
+      this.danceEntry = null;
       this.danceTime = 0;
+      for (const slot of this.slots.values()) {
+        slot.kickTime = 0;
+        slot.kickLock = 0;
+      }
+    }
+    const actors = [...this.room.players.values()];
+    if (!this.danceEntry) {
+      const settled = this.formation.update(actors, CONTROL_DT);
+      if (!settled) {
+        await Promise.all(actors.map(p => this.control(p, this.slots.get(p.id))));
+        if (!this.room.dancing) { this.endDance(); await this.step(); return; }
+        for (let i = 0; i < 4; i++) {
+          updateServos(this);
+          this.runtime.mj.mj_step(this.model, this.data);
+          this.setBall(this.danceSaved.ball);
+        }
+        this.runtime.mj.mj_forward(this.model, this.data);
+        this.room.dance = {
+          phase: this.formation.phase, ready: this.formation.ready,
+          total: actors.length, time: 0, beat: 0, bpm: DANCE_BPM,
+          move: "全体集合！",
+        };
+        this.syncState();
+        return;
+      }
+      this.danceEntry = new Float64Array(this.data.qpos);
+      this.danceActors = [...actors].sort((a, b) => this.formation.slots.get(a.id).x - this.formation.slots.get(b.id).x);
+      actors.forEach(p => { p.forward = 0; p.turn = 0; });
     }
     this.danceTime += CONTROL_DT;
-    const actors = [...this.room.players.values()];
     const blend = Math.min(1, this.danceTime);
     const ease = blend * blend * (3 - 2 * blend);
     this.data.qvel.fill(0);
@@ -558,13 +615,15 @@ export class PhysicsWorld {
       this.danceSaved.qvel.slice(this.ballV, this.ballV + 6),
       this.ballV,
     );
-    actors.forEach((p, i) => {
+    this.danceActors.forEach((p, i) => {
       const slot = this.slots.get(p.id);
       const pose = dancePose(this.danceTime, i, actors.length);
       const b = slot.baseQ,
-        start = this.danceSaved.qpos;
-      this.data.qpos[b] = start[b] + (pose.x - start[b]) * ease;
-      this.data.qpos[b + 1] = start[b + 1] + (-pose.z - start[b + 1]) * ease;
+        start = this.danceEntry;
+      // Keep the physically reached root position. Only choreography sway moves it.
+      const lineX = (i - (actors.length - 1) / 2) * 0.48;
+      this.data.qpos[b] = start[b] + (pose.x - lineX) * ease;
+      this.data.qpos[b + 1] = start[b + 1] - (pose.z - FORMATION_Z) * ease;
       const height = pose.height + (p.mode === "roller" ? 0.0135 : 0);
       this.data.qpos[b + 2] = start[b + 2] + (height - start[b + 2]) * ease;
       // Normalized shortest-arc blend keeps a smooth turn into the chorus line.
@@ -612,6 +671,7 @@ export class PhysicsWorld {
     this.runtime.mj.mj_forward(this.model, this.data);
     const pose = dancePose(this.danceTime, 0, actors.length);
     this.room.dance = {
+      phase: "dancing",
       time: this.danceTime,
       bpm: DANCE_BPM,
       beat: pose.beat,
@@ -620,9 +680,23 @@ export class PhysicsWorld {
     this.syncState();
   }
   endDance() {
+    for (const p of this.room.players.values()) p.mode = this.danceSaved.modes.get(p.id) || p.mode;
+    if (this.signature !== this.rosterSignature()) this.rebuild();
     this.data.qpos.set(this.danceSaved.qpos);
     this.data.qvel.set(this.danceSaved.qvel);
     this.room.goal = this.danceSaved.goal;
+    for (const [id, saved] of this.danceSaved.controllers) {
+      const slot = this.slots.get(id);
+      if (!slot) continue;
+      slot.targets.set(saved.targets);
+      slot.lastAction.set(saved.lastAction);
+      for (const key of ["fallenFor", "recovery", "recoveryTime", "kickTime", "kickLock", "kickSide"])
+        slot[key] = saved[key];
+    }
+    for (const p of this.room.players.values()) { p.forward = 0; p.turn = 0; }
+    this.formation = null;
+    this.danceEntry = null;
+    this.danceActors = null;
     this.danceSaved = null;
     this.room.dance = null;
     this.runtime.mj.mj_forward(this.model, this.data);
