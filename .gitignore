@@ -9,7 +9,6 @@ coverage/
 .impeccable/
 PRODUCT.md
 :memory:.ses
-reference/legacy-lake-house.glb
 
 reference/duckemw-recovered/
 public/assets/runtime/
