@@ -34,3 +34,7 @@
 
 - Bungee Regular：David Jonathan Ross，SIL Open Font License 1.1。字体与完整许可保存在 `public/assets/fonts/`，来源 https://github.com/google/fonts/tree/main/ofl/bungee 。
 - 舞蹈动作类型和节拍编排参考 https://github.com/emwstudio/DuckEMW ，并参考用户提供的视频。未复制该仓库代码、权重或歌曲。`src/dance.js`、`scripts/generate-dance-poses.mjs` 与生成的 `src/dance-squat.js` 为本项目原创；蹲起使用原模型的正向运动学求解脚底固定的关节关键帧，舞蹈时暂停动力学仿真。合成节拍为本地 Web Audio 原创声音。
+
+## 浏览器版运行时
+
+- `src/physics/world-core.js` 与原生版共享相同的物理场景、观察量和伺服模型。浏览器使用 `@mujoco/mujoco` 3.11.0（Apache-2.0）与 `onnxruntime-web` 1.30.0（MIT）；构建时将固定版本的 WASM/JS 复制到 `assets/runtime/`，不使用 CDN。

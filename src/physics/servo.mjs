@@ -1,13 +1,8 @@
 // JavaScript adaptation of Rhoban BAM M6 and XL330 voltage control.
 // Copyright 2025 Marc Duclusaud & Grégoire Passault. Apache-2.0.
 // Adaptation: local MuJoCo multi-robot loop; see THIRD_PARTY.md and reference/.
-import { readFile } from "node:fs/promises";
-export const BAM = JSON.parse(
-  await readFile(
-    new URL("../../reference/bam-xl330-m6.json", import.meta.url),
-    "utf8",
-  ),
-);
+import { BAM } from "./bam-config.js";
+export { BAM } from "./bam-config.js";
 export const BATTERY_VOLTS = 7.35;
 export const MAX_TORQUE = (BATTERY_VOLTS * BAM.kt) / BAM.R;
 const ERROR_GAIN = 4096 / (2 * Math.PI) / (256 * 885);

@@ -1,0 +1,58 @@
+import { resetPlayer, resetPlay, syncBots, FIELD } from "./simulation.js";
+export function applyCommand(room, player, message) {
+  if (room.dancing && !["dance", "reset", "rename"].includes(message.type))
+    return;
+  switch (message.type) {
+    case "input":
+      player.forward = Math.max(-1, Math.min(1, Number(message.forward) || 0));
+      player.turn = Math.max(-1, Math.min(1, Number(message.turn) || 0));
+      break;
+    case "mode":
+      if (["walk", "roller"].includes(message.mode)) player.mode = message.mode;
+      break;
+    case "dance":
+      room.dancing = !room.dancing;
+      for (const actor of room.players.values()) {
+        actor.forward = 0;
+        actor.turn = 0;
+        actor.kickRequested = false;
+      }
+      break;
+    case "reset":
+      resetPlay(room, player);
+      break;
+    case "spectator":
+      player.spectator = !player.spectator;
+      if (player.spectator) {
+        player.z = FIELD.halfWidth + 0.2;
+        player.forward = 0;
+        player.turn = 0;
+        player.resetRevision++;
+        player.resetPose = { x: player.x, z: player.z, yaw: player.yaw };
+      } else resetPlayer(player);
+      break;
+    case "kick":
+      player.kickRequested = true;
+      break;
+    case "quack":
+      player.quack = 0.55;
+      break;
+    case "auto":
+      player.auto = !!message.value;
+      break;
+    case "ai":
+      room.ai = !!message.value;
+      syncBots(room);
+      break;
+    case "team":
+      player.team = player.team === "blue" ? "orange" : "blue";
+      resetPlayer(player);
+      syncBots(room);
+      break;
+    case "rename":
+      player.name = String(message.name || "小鸭队长")
+        .trim()
+        .slice(0, 24);
+      break;
+  }
+}

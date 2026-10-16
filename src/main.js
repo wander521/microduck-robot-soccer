@@ -1,4 +1,6 @@
 import "./style.css";
+import { assetUrl } from "./assets.js";
+import { BrowserGame } from "./browser-game.js";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
@@ -19,7 +21,7 @@ let entered = false,
   ready = false,
   loadError = null,
   myId = null,
-  ws = null,
+  game = null,
   snapshot = null,
   freeCamera = false,
   following = true,
@@ -31,8 +33,7 @@ let entered = false,
   lastDanceBeat = -1,
   lastGoalRevision = 0,
   toastTimer,
-  goalTimer,
-  reconnectTimer;
+  goalTimer;
 const keys = new Set(),
   ducks = new Map(),
   balls = [],
@@ -84,7 +85,7 @@ function toast(text, duration = 3000) {
   );
 }
 function send(value) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(value));
+  game?.send(value);
 }
 function safeStoredName() {
   try {
@@ -634,15 +635,18 @@ async function initialize() {
       target: new THREE.Vector3(0, 0.05, 0),
     });
   progress(0.35, "球场已就绪，正在装配机器鸭…");
-  const loadingDuck = fetch("/assets/robot/kinematics.json")
+  const loadingDuck = fetch(assetUrl("assets/robot/kinematics.json"))
     .then((r) => {
       if (!r.ok) throw new Error("机器人装配数据加载失败");
       return r.json();
     })
     .then((k) =>
-      buildRig(k, {
-        materialForMesh: robotMaterial,
-      }),
+      buildRig(
+        { ...k, mesh_dir: assetUrl("assets/robot/meshes") },
+        {
+          materialForMesh: robotMaterial,
+        },
+      ),
     )
     .then((rig) => {
       prototypeRig = rig;
@@ -657,13 +661,13 @@ async function initialize() {
         }
       });
     });
-  const loadingRoller = fetch("/assets/robot/kinematics_rollers.json")
+  const loadingRoller = fetch(assetUrl("assets/robot/kinematics_rollers.json"))
     .then((r) => {
       if (!r.ok) throw new Error("滚轮模型加载失败");
       return r.json();
     })
     .then((k) => {
-      k.mesh_dir = "/assets/robot/meshes";
+      k.mesh_dir = assetUrl("assets/robot/meshes");
       return buildRig(k, { materialForMesh: robotMaterial });
     })
     .then((rig) => {
@@ -680,7 +684,7 @@ async function initialize() {
   renderer.setAnimationLoop(render);
   await Promise.all([loadingDuck, loadingRoller]);
   setScene(sceneKey, false);
-  progress(1, "小鸭已就绪，准备开球！");
+  progress(0.35, "机器鸭已就绪，正在准备比赛…");
   ready = true;
 }
 const loadPromise = initialize().catch((error) => {
@@ -842,45 +846,27 @@ function updateSceneState(state) {
     showGoal(state.goal.team);
   }
 }
-function connect() {
-  clearTimeout(reconnectTimer);
-  if (ws) {
-    ws.onclose = null;
-    ws.close();
-  }
-  const url = new URL("/play", location.href);
-  url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  url.searchParams.set("name", $("#player-name").value.trim());
-  ws = new WebSocket(url);
+async function connect() {
+  game?.dispose();
+  game = new BrowserGame();
   $("#connection-text").textContent = "正在准备比赛";
-  ws.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      if (data.type === "welcome") {
-        myId = data.id;
-        lastGoalRevision = 0;
-        $(".status-dot").classList.remove("offline");
-        $("#scoreboard").hidden = false;
-      }
-      if (data.type === "state") updateSceneState(data);
-      if (data.type === "physics-error") {
-        $("#connection-text").textContent = data.message;
-        toast(data.message, 6000);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-  ws.onclose = (e) => {
-    keys.clear();
+  game.onState = updateSceneState;
+  game.onError = (error) => {
+    loadError = error;
     $(".status-dot").classList.add("offline");
-    $("#connection-text").textContent =
-      e.code === 1008 ? "比赛尚未就绪，请刷新页面" : "本地引擎恢复中…";
-    if (e.code !== 1008) reconnectTimer = setTimeout(connect, 2000);
+    $("#connection-text").textContent = "准备失败，请重新加载";
+    $("#loading-message").textContent =
+      `加载失败：${error.message}。请重新加载球场。`;
+    $("#retry").hidden = false;
+    if (entered) toast("游戏运行中断，请刷新页面后重试。", 6000);
   };
-  ws.onerror = () => {
-    $("#connection-text").textContent = "请启动本地游戏服务后重试";
-  };
+  const id = await game.start($("#player-name").value.trim(), (p, text) =>
+    progress(0.35 + p * 0.65, text),
+  );
+  myId = id;
+  lastGoalRevision = 0;
+  $(".status-dot").classList.remove("offline");
+  $("#scoreboard").hidden = false;
 }
 function updateDanceUI(dance) {
   const active = !!dance;
@@ -1149,8 +1135,12 @@ async function enterGame(event) {
   if (entered) {
     send({ type: "rename", name });
   } else {
+    try {
+      await connect();
+    } catch {
+      return;
+    }
     entered = true;
-    connect();
   }
   $("#preflight").classList.add("dismissed");
   document.body.classList.remove("preflight-active");
@@ -1285,6 +1275,7 @@ addEventListener("blur", () => {
   send({ type: "input", forward: 0, turn: 0 });
 });
 document.addEventListener("visibilitychange", () => {
+  game?.send({ type: "pause", value: document.hidden });
   if (document.hidden) {
     keys.clear();
     send({ type: "input", forward: 0, turn: 0 });
