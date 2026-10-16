@@ -1236,7 +1236,7 @@ $("#kick-action").onclick = () => send({ type: "kick" });
 $("#dance-action").onclick = () => send({ type: "dance" });
 function resetMatch() {
   send({ type: "reset" });
-  toast("小鸭与足球已归位，重新开球！");
+  toast("全部小鸭与足球已归位，重新开球！");
 }
 $("#reset-action").onclick = resetMatch;
 addEventListener("keydown", (e) => {

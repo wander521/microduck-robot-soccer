@@ -59,13 +59,16 @@ export function addPlayer(room, id, name, team) {
   room.players.set(id, p);
   return p;
 }
-export function resetPlayer(p) {
+export function resetPlayer(p, pose = null) {
   resetCharge(p);
-  p.x = p.team === "blue" ? -0.2 : 0.2;
-  p.z = 0;
-  p.yaw = p.team === "blue" ? 0 : Math.PI;
+  p.x = pose?.x ?? (p.team === "blue" ? -0.2 : 0.2);
+  p.z = pose?.z ?? 0;
+  p.yaw = pose?.yaw ?? (p.team === "blue" ? 0 : Math.PI);
   p.spectator = false;
   p.speed = 0;
+  p.kick = 0;
+  p.quack = 0;
+  p.recovery = null;
   p.forward = 0;
   p.turn = 0;
   p.kickRequested = false;
@@ -77,7 +80,20 @@ export function resetPlayer(p) {
 export function resetPlay(room, player) {
   room.dancing = false;
   resetFootballAI(room);
-  resetPlayer(player);
+  const captain = room.players.get(player?.id) || room.players.values().next().value;
+  const counts = { blue: 0, orange: 0 };
+  for (const actor of room.players.values()) {
+    if (actor === captain) {
+      resetPlayer(actor);
+      continue;
+    }
+    // Match the spread-out kickoff formation, never stack teammates together.
+    const index = counts[actor.team]++;
+    resetPlayer(actor, {
+      x: (actor.team === "blue" ? -1 : 1) * (0.65 + Math.floor(index / 2) * 0.32),
+      z: index % 2 ? 0.28 : -0.28,
+    });
+  }
   room.ballResetPending = true;
 }
 export function syncBots(room) {

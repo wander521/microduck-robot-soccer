@@ -356,6 +356,8 @@ export class PhysicsWorld {
   reset(p) {
     const slot = this.slots.get(p.id);
     if (!slot) return;
+    p.kick = 0;
+    p.recovery = null;
     resetCharge(p);
     clearChargeImpacts(this);
     const q = this.data.qpos,

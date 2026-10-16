@@ -40,3 +40,32 @@ test("browser controls change teams, mode, AI, name and autoplay locally", () =>
   applyCommand(room, p, { type: "kick" });
   assert.equal(p.kickRequested, true);
 });
+
+test("reset restarts every duck in separated team positions and clears ongoing actions", () => {
+  for (const team of ["blue", "orange"]) {
+    const room = createRoom(), captain = addPlayer(room, "you", "Captain", team);
+    applyCommand(room, captain, {type:"ai", value:true});
+    room.scores = {blue:2, orange:1};
+    const settings = new Map([...room.players.values()].map((p,i)=>{
+      p.mode = i===1 ? "roller" : "walk";
+      Object.assign(p, {x:1,z:.7,forward:1,turn:.8,kick:1,kickRequested:true,
+        charge:.8,chargeCooldown:8,quack:.4,recovery:"stand"});
+      return [p.id,{team:p.team,mode:p.mode,auto:p.auto,name:p.name,revision:p.resetRevision}];
+    }));
+    applyCommand(room,captain,{type:"reset"});
+    for(const p of room.players.values()){
+      const before=settings.get(p.id);
+      assert.equal(p.resetRevision,before.revision+1);
+      for(const key of ["team","mode","auto","name"])assert.equal(p[key],before[key]);
+      assert.equal(p.charge,0);assert.equal(p.chargeCooldown,0);
+      assert.equal(p.kick,0);assert.equal(p.kickRequested,false);
+      assert.equal(p.recovery,null);assert.equal(p.forward,0);assert.equal(p.turn,0);
+      assert.equal(p.quack,0);
+      assert.equal(p.yaw,p.team==="blue"?0:Math.PI);
+      assert.ok(p.team==="blue"?p.x<0:p.x>0);
+      for(const q of room.players.values())if(q!==p)assert.ok(Math.hypot(p.x-q.x,p.z-q.z)>.3);
+    }
+    assert.deepEqual(room.scores,{blue:2,orange:1});
+    assert.equal(room.ballResetPending,true);
+  }
+});

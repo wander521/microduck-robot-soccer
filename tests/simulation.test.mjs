@@ -529,3 +529,50 @@ test("R requires real opponent contact; the impact can topple an opponent who th
     world.dispose();
   }
 });
+
+test("Space resets all physical ducks and the ball after in-flight inference completes", async () => {
+  const {room,player,world}=roomWithPlayer();
+  room.ai=true;syncBots(room);
+  try{
+    await steps(room,40);
+    world.setBall({x:.8,z:.55,y:.15,vx:.5,vz:.4,angular:[2,1,3]});
+    const revisions=new Map();
+    for(const p of room.players.values()){
+      revisions.set(p.id,p.resetRevision);
+      const slot=world.slots.get(p.id);
+      world.data.qpos[slot.baseQ]=.9;
+      world.data.qpos[slot.baseQ+1]=-.6;
+      world.data.qvel[slot.baseV]=.6;
+      slot.kickTime=.3;slot.footballHandoff=.5;
+      slot.recovery="stand";slot.recoveryTime=.2;
+      p.charge=.8;p.chargeCooldown=8;
+    }
+    world.runtime.mj.mj_forward(world.model,world.data);
+    const control=world.control.bind(world);
+    let reset=false;
+    world.control=async(...args)=>{
+      await control(...args);
+      if(!reset){reset=true;resetPlay(room,player);}
+    };
+    await tick(room);
+    world.control=control;
+    for(const p of room.players.values()){
+      const slot=world.slots.get(p.id);
+      assert.equal(p.resetRevision,revisions.get(p.id)+1);
+      assert.equal(slot.resetRevision,p.resetRevision);
+      assert.equal(slot.kickTime,0);assert.equal(slot.footballHandoff,0);
+      assert.equal(slot.recovery,null);assert.equal(p.recovery,null);
+      assert.equal(p.kick,0);assert.equal(p.charge,0);assert.equal(p.chargeCooldown,0);
+      const expected=p.id===player.id?{x:-.2,z:0}
+        :{x:p.team==="blue"?-.65:.65,z:p.id==="bot-2"?.28:-.28};
+      assert.ok(Math.hypot(p.x-expected.x,p.z-expected.z)<.01);
+      assert.ok(Math.hypot(world.data.qvel[slot.baseV],world.data.qvel[slot.baseV+1])<.02);
+      for(const other of room.players.values())if(other!==p)
+        assert.ok(Math.hypot(p.x-other.x,p.z-other.z)>.3);
+    }
+    const ball=world.readBall();
+    assert.ok(Math.hypot(ball.x,ball.z,ball.vx,ball.vz)<1e-8);
+    assert.ok(ball.angular.every(v=>Math.abs(v)<1e-8));
+    assert.ok(world.data.qfrc_applied.every(v=>v===0));
+  }finally{world.dispose();}
+});
