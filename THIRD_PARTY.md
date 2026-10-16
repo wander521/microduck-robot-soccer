@@ -6,7 +6,7 @@
 - 训练项目：https://github.com/pollen-robotics/microduck_rl
 - 原始模拟器：https://huggingface.co/spaces/pollen-robotics/microduck-simulator
 - `src/duck-rig.js` 改编自上述 Space 的 `app/src/game/duck.js`，主要调整本地资源路径与材质，代码许可 Apache-2.0；完整许可证见 `reference/LICENSE-APACHE-2.0`。
-- `public/assets/robot/microduck.glb`、`kinematics.json` 取自上述 Space。机器人三维模型由 **Pollen Robotics** 创作，模型许可 **CC BY-NC-SA 4.0**，详见 `reference/LICENSE-MODELS.md` 及 https://creativecommons.org/licenses/by-nc-sa/4.0/ 。本项目没有更改 GLB 几何文件；运行时配置了不同材质颜色；足球动作来自 MuJoCo / ONNX 策略，舞蹈是单独的原创编舞。
+- `public/assets/robot/microduck.glb`、`kinematics.json` 取自上述 Space。机器人三维模型由 **Pollen Robotics** 创作，模型许可 **CC BY-NC-SA 4.0**，详见 `reference/LICENSE-MODELS.md` 及 https://creativecommons.org/licenses/by-nc-sa/4.0/ 。本项目没有更改 GLB 几何文件；运行时配置了不同材质颜色；足球动作来自 MuJoCo / ONNX 策略，舞蹈来自另一项任务独立训练的 DuckEMW 兼容策略。
 
 ## 参考场景
 
@@ -33,7 +33,8 @@
 ## 字体与舞蹈参考
 
 - Bungee Regular：David Jonathan Ross，SIL Open Font License 1.1。字体与完整许可保存在 `public/assets/fonts/`，来源 https://github.com/google/fonts/tree/main/ofl/bungee 。
-- 舞蹈动作类型和节拍编排参考 https://github.com/emwstudio/DuckEMW ，并参考用户提供的视频。未复制该仓库代码、权重或歌曲。`src/dance.js`、`scripts/generate-dance-poses.mjs` 与生成的 `src/dance-squat.js` 为本项目原创；蹲起使用原模型的正向运动学求解脚底固定的关节关键帧，舞蹈时暂停动力学仿真。合成节拍为本地 Web Audio 原创声音。
+- 舞蹈训练参考 https://github.com/emwstudio/DuckEMW ，部署的是本项目另一项训练任务导出的预览检查点，来源、版本与部署契约见 `reference/DANCE_POLICY.md` 和策略 manifest；没有复制上游未公开权重或歌曲。舞蹈动作由 ONNX 与 MuJoCo 实际推理，旧关节关键帧已移除；本地 Web Audio 只合成节拍。
+- `public/assets/robot/robot_dance.xml` 和四个 `meshes/dance_*.stl` 来自 Pollen Robotics 官方训练基座 `5946fd9` 的 walk 模型；移除视觉几何并改碰撞资源名以匹配训练接触模型。几何仍按 CC BY-NC-SA 4.0 署名与分发，相关代码沿用 Apache-2.0。
 
 ## 浏览器版运行时
 

@@ -1,6 +1,7 @@
 import "./style.css";
 import { assetUrl } from "./assets.js";
 import { BrowserGame } from "./browser-game.js";
+import { CameraTransition } from "./camera-transition.js";
 import { createIslandWorld } from "./island-world.js";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -61,6 +62,7 @@ let renderer,
   scene,
   camera,
   controls,
+  cameraTransition,
   prototypeRig,
   rollerPrototypeRig,
   moonWorld,
@@ -565,6 +567,7 @@ async function initialize() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 0.177, 0);
+  cameraTransition = new CameraTransition(camera, controls);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.minDistance = 0.28;
@@ -852,18 +855,35 @@ function updateDanceUI(dance) {
         target: controls.target.clone(),
         following,
         freeCamera,
+        offset: camera.position.clone().sub(controls.target),
       };
       following = false;
       dancePerforming = false;
-      camera.position.set(1.9, 2.077, 2.3);
-      controls.target.set(0, 0.177, 0);
-      camera.zoom = Math.min(1, Math.max(0.52, camera.aspect / 1.18));
+      const offset = danceCamera.offset.clone();
+      if (offset.length() < 3.2) offset.setLength(3.2);
+      offset.y = Math.max(1.6, offset.y);
+      const target = new THREE.Vector3(0, 0.177, 0);
+      cameraTransition.start({
+        offset, target,
+        zoom: () => Math.min(1, Math.max(0.52, camera.aspect / 1.18)),
+        duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.65,
+      });
     } else if (danceCamera) {
-      camera.position.copy(danceCamera.position);
-      controls.target.copy(danceCamera.target);
-      following = danceCamera.following;
-      freeCamera = danceCamera.freeCamera;
-      camera.zoom = Math.min(1, Math.max(0.52, camera.aspect / 1.18));
+      const saved = danceCamera;
+      following = saved.following;
+      freeCamera = saved.freeCamera;
+      const target = following ? () => {
+        const mine = ducks.get(myId);
+        const position = mine?.rig.placer.position;
+        const player = snapshot?.players.find(p => p.id === myId);
+        return new THREE.Vector3(position?.x ?? player?.x ?? 0, 0.177, position?.z ?? player?.z ?? 0);
+      } : saved.target;
+      cameraTransition.start({
+        position: saved.position, target,
+        offset: following ? saved.offset : null,
+        zoom: () => Math.min(1, Math.max(0.52, camera.aspect / 1.18)),
+        duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.55,
+      });
       danceCamera = null;
     }
     camera.updateProjectionMatrix();
@@ -873,17 +893,18 @@ function updateDanceUI(dance) {
   const performing = dance.phase === "dancing";
   if (performing && !dancePerforming) {
     dancePerforming = true;
-    camera.position.set(0, 0.85, 2.15);
-    controls.target.set(0, 0.18, -0.12);
-    camera.zoom = Math.min(1, Math.max(0.55, camera.aspect / 0.9));
-    camera.updateProjectionMatrix();
-    controls.update();
+    cameraTransition.start({
+      position: new THREE.Vector3(0, 0.85, 2.15),
+      target: new THREE.Vector3(0, 0.18, -0.12),
+      zoom: () => Math.min(1, Math.max(0.55, camera.aspect / 0.9)),
+      duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.7,
+    });
   }
   $("#dance-move").textContent = !performing
     ? dance.phase === "settling" ? "站稳了，准备开跳" : `正在集合 · ${dance.ready}/${dance.total} 就位`
-    : dance.time < 1 ? "准备开跳！" : dance.move;
+    : dance.move;
   const beat = Math.floor(dance.beat);
-  if (performing && beat !== lastDanceBeat && dance.time > 1) {
+  if (performing && beat !== lastDanceBeat) {
     lastDanceBeat = beat;
     if (sound) playDanceBeat(beat);
   }
@@ -1020,7 +1041,7 @@ function render() {
   }
   const mine = ducks.get(myId);
   if (mine && entered) {
-    if (freeCamera && !dancing) {
+    if (freeCamera && !dancing && !cameraTransition.active) {
       const movement = new THREE.Vector3();
       camera.getWorldDirection(movement);
       movement.y = 0;
@@ -1043,7 +1064,7 @@ function render() {
       if (keys.has("KeyE")) delta.y += speed;
       camera.position.add(delta);
       controls.target.add(delta);
-    } else if (following && !dancing) {
+    } else if (following && !dancing && !cameraTransition.active) {
       const target = new THREE.Vector3(
         mine.rig.placer.position.x,
         0.177,
@@ -1060,6 +1081,7 @@ function render() {
       sendInput();
     }
   }
+  cameraTransition.update(dt);
   controls.update();
   renderer.render(scene, camera);
 }

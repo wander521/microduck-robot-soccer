@@ -15,13 +15,23 @@ export async function createPhysicsRuntime({
   createPolicy,
   onProgress = () => {},
 }) {
-  const [walkXml, rollerXml] = await Promise.all([
+  const [walkXml, rollerXml, danceXml, danceManifest] = await Promise.all([
     readText("robot/robot_allcollisions.xml"),
     readText("robot/robot_allcollisions_rollers.xml"),
+    readText("robot/robot_dance.xml"),
+    readText("policies/duckemw_dance.json"),
   ]);
+  const danceInfo = JSON.parse(danceManifest);
+  const contract = danceInfo.runtime;
+  if (danceInfo.schema !== "microduck-game-dance-v1" ||
+      contract?.observationSize !== 61 || contract?.actionSize !== 14 ||
+      contract?.policyHz !== 50 || contract?.physicsHz !== 200 ||
+      contract?.actuatorDelayPhysicsSteps !== 4 || contract?.jointVelocityDelayControlSteps !== 1)
+    throw new Error("舞蹈策略与当前运行时契约不兼容");
   const templates = {
     walk: physicsTemplate(walkXml),
     roller: physicsTemplate(rollerXml),
+    dance: physicsTemplate(danceXml),
   };
   const used = new Set(
     Object.values(templates).flatMap((doc) =>
@@ -46,13 +56,14 @@ export async function createPhysicsRuntime({
     roller: "BEST_roller.onnx",
     kickL: "ball_kick_left.onnx",
     kickR: "ball_kick_right.onnx",
+    dance: "duckemw_dance.onnx",
   };
   const policies = {};
   let loaded = 0;
   // Sequential session creation avoids concurrent WASM initialization on static hosts.
   for (const [key, file] of Object.entries(files)) {
     policies[key] = await createPolicy(`policies/${file}`);
-    onProgress(0.5 + (++loaded / 5) * 0.45, "正在准备行走、射门与起身动作…");
+    onProgress(0.5 + (++loaded / Object.keys(files).length) * 0.45, "正在准备行走、射门与舞步…");
   }
   return {
     mj,
@@ -61,6 +72,7 @@ export async function createPhysicsRuntime({
     templates,
     used,
     policies,
+    danceInfo,
     engineVersion: mj.mj_versionString(),
   };
 }

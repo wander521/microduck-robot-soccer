@@ -60,7 +60,11 @@ export function updateServos(world) {
         -data.qfrc_bias[dof] +
         data.qfrc_constraint[dof] -
         frictionForJoint[slot.jointIds[j]];
-      data.ctrl[slot.ctrl[j]] = servoTorque(slot.targets[j], q, velocity);
+      // A policy with trained bus latency can provide a delayed target;
+      // the existing football policies keep their immediate target path.
+      data.ctrl[slot.ctrl[j]] = servoTorque(
+        (slot.motorTargets || slot.targets)[j], q, velocity,
+      );
       model.dof_frictionloss[dof] = frictionBudget(motor, external, velocity);
       model.dof_damping[dof] = BAM.friction_viscous;
     }

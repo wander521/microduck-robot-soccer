@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import {
   createRoom,
@@ -14,6 +14,9 @@ import {
 import { loadPhysicsRuntime, PhysicsWorld } from "../src/physics/world.mjs";
 import { velocityCommand, projectedGravity } from "../src/physics/constants.js";
 const runtime = await loadPhysicsRuntime();
+after(async () => {
+  await Promise.all(Object.values(runtime.policies).map(session => session.release()));
+});
 function roomWithPlayer() {
   const room = createRoom();
   room.ai = false;
@@ -288,7 +291,7 @@ test("a stationary ball is gently released from a sideline and corner", async ()
   }
 });
 
-test("X walks through real policy contacts into a line before starting the dance", async () => {
+test("X walks into a line and uses the trained dance policy before resuming from the reached pose", async () => {
   const { room, player, world } = roomWithPlayer();
   try {
     room.ai = true;
@@ -336,14 +339,25 @@ test("X walks through real policy contacts into a line before starting the dance
     await steps(room, 10);
     assert.ok(player.joints.some((v, j) => Math.abs(v - pose[j]) > 0.02));
     assert.deepEqual(room.scores, scores);
-    assert.equal(world.data.time, pausedTime, "only the choreography pauses robot physics");
+    assert.ok(world.data.time > pausedTime + 1.6, "trained choreography advances actual physics");
+    assert.equal(room.dance.engine, "onnx");
+    assert.equal(room.dance.policy, runtime.danceInfo.id);
+    assert.equal(room.dance.falls, 0);
     assert.ok(Math.abs(room.balls[0].x - ball.x) < 1e-8);
-    assert.ok(Math.abs(room.balls[0].vx - ball.vx) < 1e-8);
+    assert.equal(room.balls[0].vx, 0);
+    const reached = world.saveStates();
     room.dancing = false;
     await tick(room);
     assert.equal(room.dance, null);
-    assert.ok(Math.abs(player.x - saved.get(player.id).position[0]) < 0.02);
+    for (const p of room.players.values()) {
+      const last = reached.get(p.id).position;
+      assert.ok(Math.hypot(p.x - last[0], p.z + last[1]) < .025, "X must keep the current dance position");
+    }
     assert.ok(world.data.time > pausedTime);
+    await steps(room, 100);
+    assert.ok([...room.players.values()].some(p => p.bot &&
+      Math.hypot(p.x - reached.get(p.id).position[0], p.z + reached.get(p.id).position[1]) > .05),
+      "AI resumes chasing from the dance positions");
     // Space must also cancel while the robots are still walking to the line.
     room.dancing = true;
     await steps(room, 25);
@@ -383,20 +397,22 @@ test("formation completes from crowded and dispersed starts without exchanging l
   }
 });
 
-test("X cancels formation and restores roller mode; Space during inference still resets the ball", async () => {
+test("X cancels formation in place and restores roller mode; Space during inference still resets the ball", async () => {
   const {room, player, world} = roomWithPlayer();
   try {
     player.mode = "roller";
     await steps(room, 50);
     const before = world.saveStates().get(player.id);
     room.dancing = true;
-    await steps(room, 25);
+    await steps(room, 150);
     assert.equal(player.mode, "walk");
+    const atCancel = {x: player.x, z: player.z};
     room.dancing = false;
     await tick(room);
     assert.equal(room.dance, null);
     assert.equal(player.mode, "roller");
-    assert.ok(Math.abs(player.x - before.position[0]) < .02);
+    assert.ok(Math.hypot(player.x - atCancel.x, player.z - atCancel.z) < .02);
+    assert.ok(Math.abs(player.x - before.position[0]) > .04);
     assert.equal(world.slots.get(player.id).extra.length, 4);
     world.setBall({x:.6, z:.4, vx:1, angular:[1,2,3]});
     const control = world.control.bind(world);
@@ -411,5 +427,41 @@ test("X cancels formation and restores roller mode; Space during inference still
     assert.equal(player.mode, "roller");
     assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
     assert.ok(Math.hypot(room.balls[0].vx, room.balls[0].vz) < 1e-8);
+  } finally {world.dispose();}
+});
+
+test("trained ONNX dance stays physical for a full phrase and Space cancels in-flight dance inference", async () => {
+  const {room, player, world} = roomWithPlayer();
+  try {
+    room.ai = true; syncBots(room);
+    await steps(room, 50);
+    room.dancing = true;
+    for (let i = 0; i < 1500 && room.dance?.phase !== "dancing"; i++) await tick(room);
+    assert.equal(room.dance.phase, "dancing");
+    const start = world.data.time;
+    let min = player.height, max = player.height, calls = 0;
+    const session = runtime.policies.dance;
+    world.runtime = {...runtime, policies: {...runtime.policies, dance: {
+      inputNames: session.inputNames, outputNames: session.outputNames,
+      async run(...args) {calls++; return session.run(...args);},
+    }}};
+    for (let i = 0; i < 2100; i++) {
+      await tick(room);
+      min = Math.min(min, player.height); max = Math.max(max, player.height);
+      assert.ok([...world.data.qpos, ...world.data.qvel].every(Number.isFinite));
+    }
+    assert.equal(calls, 4 * 2100);
+    assert.equal(room.dance.falls, 0);
+    assert.ok(world.data.time > start + 41.9);
+    assert.ok(max - min > .012, "motion comes from actual trained dynamics");
+    world.runtime.policies.dance.run = async (...args) => {
+      const output = await session.run(...args);
+      resetPlay(room, player);
+      return output;
+    };
+    await tick(room);
+    assert.equal(room.dance, null);
+    assert.ok(Math.abs(player.x + .2) < .01);
+    assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
   } finally {world.dispose();}
 });

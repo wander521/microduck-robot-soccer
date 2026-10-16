@@ -1,0 +1,38 @@
+{
+  "schema": "microduck-game-dance-v1",
+  "id": "duckemw-local3090-4096-500",
+  "file": "duckemw_dance.onnx",
+  "sha256": "ecdb4b77e1c126997dd83373350cfbf974564ce8ce986310f7da945c1de07b3d",
+  "source": {
+    "parent": "https://github.com/emwstudio/DuckEMW",
+    "parentRevision": "bdb870fd2e9b0329d7df70e06abc0d2262a38960",
+    "compatibleBase": "5946fd9cdbc58956424420153e51975af3b30d77",
+    "details": "training/dance-20261016/SOURCES.md"
+  },
+  "training": {
+    "task": "Mjlab-Dance-Flat-MicroDuck",
+    "parallelEnvironments": 4096,
+    "targetIterations": 4000,
+    "checkpointIteration": 500,
+    "status": "training",
+    "seed": 42,
+    "amplitudeRampSteps": 96000
+  },
+  "runtime": {
+    "observationSize": 61,
+    "actionSize": 14,
+    "policyHz": 50,
+    "physicsHz": 200,
+    "bodyCommand": "sin(pi*beat), cos(pi*beat), bpm/120, move bit 0, move bit 1, move bit 2",
+    "actuatorDelayPhysicsSteps": 4,
+    "jointVelocityDelayControlSteps": 1
+  },
+  "verification": {
+    "durationSeconds": 42,
+    "ducks": 4,
+    "falls": 0,
+    "finite": true,
+    "climaxVerticalSpanMm": 25.250030686402468,
+    "climaxHeadSpanDeg": 26.020596438164198
+  }
+}
