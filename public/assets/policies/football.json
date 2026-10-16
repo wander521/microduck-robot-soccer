@@ -1,0 +1,38 @@
+{
+  "schema": "microduck-game-football-v1",
+  "id": "football-touch-stable-1024-1999",
+  "enabled": true,
+  "file": "football.onnx",
+  "sha256": "56357cc698b7e41febdd81898b27e5fa0da3289b72bf157106479d2616a665b2",
+  "windowSeconds": 1.2,
+  "currentLimitAmps": 1.75,
+  "source": {
+    "parent": "https://github.com/pollen-robotics/microduck_rl",
+    "compatibleBase": "5946fd9cdbc58956424420153e51975af3b30d77",
+    "details": "reference/FOOTBALL_POLICY.md"
+  },
+  "training": {
+    "task": "Mjlab-Football-TouchStable-MicroDuck",
+    "parallelEnvironments": 1024,
+    "completedIterations": 2000,
+    "checkpointIteration": 1999,
+    "status": "complete",
+    "seed": 42
+  },
+  "runtime": {
+    "observationSize": 61,
+    "actionSize": 14,
+    "policyHz": 50,
+    "physicsHz": 200,
+    "actuatorDelayPhysicsSteps": 4,
+    "jointVelocityDelayControlSteps": 1,
+    "bodyCommand": "yaw-relative ball x/y, yaw-relative ball velocity x/y, frozen shot direction x/y",
+    "handoff": "trained stand policy for 1 second, then walk"
+  },
+  "verification": {
+    "contactCases": 20,
+    "ballMovedCases": 20,
+    "falls": 0,
+    "maxTiltDegrees": 15.73327548347811
+  }
+}

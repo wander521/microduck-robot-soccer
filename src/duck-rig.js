@@ -4,6 +4,7 @@
 // builds an Object3D tree with one Group per body. Joints become per-body
 // local rotations driven by setJointAngles / setJoint.
 
+import { assetUrl } from "./assets.js";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
@@ -20,7 +21,7 @@ export const MESH_VERSION = "11";
 // robot_walk.xml by tools/mjcf_to_kinematics.py). robot/v1.5/ and
 // robot/alpha/ stay on disk for reference but the code no longer
 // targets them.
-export const MODEL_DIR = "/assets/robot";
+export const MODEL_DIR = assetUrl("assets/robot");
 
 // On a private HF Space, asset requests carry the ?__sign JWT (auth
 // cookies may be blocked in the hub iframe). Identity everywhere else.

@@ -11,6 +11,7 @@
   font-synthesis: none;
   --paper: #fff7e7;
   --ink: #203746;
+  --selected-marine: #263f50;
   --muted: #566971;
   --coral: #bd4930;
   --orange: #ee7957;
@@ -553,6 +554,9 @@ kbd {
 .play-hints button:hover {
   background: #f7d8bb;
 }
+.play-hints #charge-action {
+  min-width: 92px;
+}
 .play-hints #kick-action {
   background: #f6b176;
   color: #4b2f1f;
@@ -751,7 +755,7 @@ h1 {
 }
 #goal strong {
   display: block;
-  font: 400 clamp(28px, 5vw, 62px)/1.2 Bungee;
+  font: 400 clamp(28px, 5vw, 62px) / 1.2 Bungee;
   color: #bd4930;
 }
 #goal span {
@@ -829,6 +833,10 @@ h1 {
 .touch-actions button {
   font-size: 12px;
   font-weight: 750;
+}
+.touch-actions #touch-charge {
+  background: var(--selected-marine, #263f50);
+  color: var(--paper);
 }
 .touch-actions #touch-kick {
   width: 66px;
@@ -962,7 +970,8 @@ h1 {
     gap: 0;
   }
   .play-hints > span,
-  .play-hints #kick-action {
+  .play-hints #kick-action,
+  .play-hints #charge-action {
     display: none;
   }
   .play-hints #reset-action {
@@ -1163,4 +1172,141 @@ h1 {
   color: #fff7e7;
   font-size: 11px;
   padding: 4px 7px;
+}
+
+/* Five-minute match state shares the enamel scoreboard and controls. */
+.score-center time {
+  min-width: 64px;
+  font:
+    400 21px/1.15 Bungee,
+    sans-serif;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.scoreboard.last-minute time {
+  color: var(--coral);
+}
+.match-result {
+  position: fixed;
+  z-index: 22;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(360px, calc(100vw - 32px));
+  padding: 27px;
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  text-align: center;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+.match-result h2 {
+  margin: 0;
+  font-size: 27px;
+  line-height: 1.3;
+}
+.match-result p {
+  margin: 9px 0 22px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.result-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 25px;
+  margin-bottom: 24px;
+}
+.result-score > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.result-score span {
+  font-size: 12px;
+  font-weight: 750;
+}
+.result-score strong {
+  font:
+    400 48px/1.15 Bungee,
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.result-score .result-divider {
+  font-size: 27px;
+  color: var(--muted);
+}
+.match-result .primary {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+}
+.match-result small {
+  display: block;
+  margin-top: 12px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+@media (max-width: 720px) {
+  .score-center time {
+    font-size: 17px;
+    min-width: 55px;
+  }
+}
+@media (max-width: 480px) {
+  .scoreboard {
+    left: 12px;
+    right: 70px;
+    transform: none;
+    min-width: 0;
+    gap: 7px;
+    padding-inline: 10px;
+    justify-content: space-between;
+  }
+  .scoreboard .team {
+    min-width: 0;
+    column-gap: 5px;
+  }
+  .score-center time {
+    font-size: 15px;
+    min-width: 49px;
+  }
+  .match-result {
+    padding: 24px;
+  }
+}
+
+.kickoff-countdown {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  padding: 16px 25px;
+  min-width: 112px;
+  background: var(--selected-marine, #263f50);
+  color: var(--paper);
+  text-align: center;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.kickoff-countdown strong {
+  display: block;
+  font:
+    400 64px/1.1 Bungee,
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.kickoff-countdown span {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  font-weight: 750;
+}
+.preflight-active .kickoff-countdown {
+  visibility: hidden;
 }

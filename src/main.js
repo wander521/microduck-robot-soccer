@@ -1,4 +1,10 @@
+import { setRigTeam, disposeTeamSkin } from "./team-skin.js";
+import { formatMatchTime } from "./match.js";
 import "./style.css";
+import { assetUrl } from "./assets.js";
+import { BrowserGame } from "./browser-game.js";
+import { CameraTransition } from "./camera-transition.js";
+import { createIslandWorld } from "./island-world.js";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
@@ -19,7 +25,7 @@ let entered = false,
   ready = false,
   loadError = null,
   myId = null,
-  ws = null,
+  game = null,
   snapshot = null,
   freeCamera = false,
   following = true,
@@ -27,12 +33,15 @@ let entered = false,
   auto = false,
   spectator = false,
   dancing = false,
+  dancePerforming = false,
   danceCamera = null,
   lastDanceBeat = -1,
   lastGoalRevision = 0,
+  matchFinished = false,
+  matchKickoff = false,
+  lastCountdown = null,
   toastTimer,
-  goalTimer,
-  reconnectTimer;
+  goalTimer;
 const keys = new Set(),
   ducks = new Map(),
   balls = [],
@@ -58,6 +67,7 @@ let renderer,
   scene,
   camera,
   controls,
+  cameraTransition,
   prototypeRig,
   rollerPrototypeRig,
   moonWorld,
@@ -84,7 +94,7 @@ function toast(text, duration = 3000) {
   );
 }
 function send(value) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(value));
+  game?.send(value);
 }
 function safeStoredName() {
   try {
@@ -357,45 +367,7 @@ function football() {
   return group;
 }
 function createLittleWorld() {
-  const g = new THREE.Group();
-  const land = new THREE.Mesh(
-    new THREE.CylinderGeometry(7, 5.2, 2.5, 12),
-    material(0x7b9e4d, { flatShading: true }),
-  );
-  land.position.y = -1.28;
-  land.receiveShadow = true;
-  g.add(land);
-  const under = new THREE.Mesh(
-    new THREE.ConeGeometry(5.5, 5, 12),
-    material(0x807268, { flatShading: true }),
-  );
-  under.rotation.z = Math.PI;
-  under.position.y = -4;
-  g.add(under);
-  const colors = [0x70a044, 0x82ad4e, 0x4d7e3d];
-  for (let i = 0; i < 22; i++) {
-    const angle = i * 2.4,
-      r = 3.0 + (i % 4) * 1.1,
-      x = Math.cos(angle) * r,
-      z = Math.sin(angle) * r;
-    box(0.13, 0.7, 0.13, 0x8a604b, x, 0.35, z, g);
-    const canopy = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.42 + (i % 3) * 0.08, 1),
-      material(colors[i % 3], { flatShading: true }),
-    );
-    canopy.position.set(x, 0.95, z);
-    canopy.castShadow = true;
-    g.add(canopy);
-  }
-  box(0.9, 0.65, 0.8, 0xefd7b0, -2.2, 0.325, -2.3, g);
-  const roof = new THREE.Mesh(
-    new THREE.ConeGeometry(0.78, 0.5, 4),
-    material(0x9a593e, { flatShading: true }),
-  );
-  roof.rotation.y = Math.PI / 4;
-  roof.position.set(-2.2, 0.9, -2.3);
-  g.add(roof);
-  g.visible = false;
+  const g = createIslandWorld();
   scene.add(g);
   return g;
 }
@@ -600,6 +572,7 @@ async function initialize() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 0.177, 0);
+  cameraTransition = new CameraTransition(camera, controls);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.minDistance = 0.28;
@@ -634,15 +607,18 @@ async function initialize() {
       target: new THREE.Vector3(0, 0.05, 0),
     });
   progress(0.35, "球场已就绪，正在装配机器鸭…");
-  const loadingDuck = fetch("/assets/robot/kinematics.json")
+  const loadingDuck = fetch(assetUrl("assets/robot/kinematics.json"))
     .then((r) => {
       if (!r.ok) throw new Error("机器人装配数据加载失败");
       return r.json();
     })
     .then((k) =>
-      buildRig(k, {
-        materialForMesh: robotMaterial,
-      }),
+      buildRig(
+        { ...k, mesh_dir: assetUrl("assets/robot/meshes") },
+        {
+          materialForMesh: robotMaterial,
+        },
+      ),
     )
     .then((rig) => {
       prototypeRig = rig;
@@ -657,13 +633,13 @@ async function initialize() {
         }
       });
     });
-  const loadingRoller = fetch("/assets/robot/kinematics_rollers.json")
+  const loadingRoller = fetch(assetUrl("assets/robot/kinematics_rollers.json"))
     .then((r) => {
       if (!r.ok) throw new Error("滚轮模型加载失败");
       return r.json();
     })
     .then((k) => {
-      k.mesh_dir = "/assets/robot/meshes";
+      k.mesh_dir = assetUrl("assets/robot/meshes");
       return buildRig(k, { materialForMesh: robotMaterial });
     })
     .then((rig) => {
@@ -680,7 +656,7 @@ async function initialize() {
   renderer.setAnimationLoop(render);
   await Promise.all([loadingDuck, loadingRoller]);
   setScene(sceneKey, false);
-  progress(1, "小鸭已就绪，准备开球！");
+  progress(0.35, "机器鸭已就绪，正在准备比赛…");
   ready = true;
 }
 const loadPromise = initialize().catch((error) => {
@@ -720,6 +696,7 @@ function makeDuck(player) {
   const rig = cloneRig(
     player.mode === "roller" ? rollerPrototypeRig : prototypeRig,
   );
+  setRigTeam(rig, player.team);
   const group = rig.placer;
   group.position.set(player.x, 0, player.z);
   group.rotation.y = 0;
@@ -767,12 +744,14 @@ function updateSceneState(state) {
     if (d && d.rigMode !== player.mode) {
       scene.remove(d.rig.placer, d.ring);
       d.label.remove();
+      disposeTeamSkin(d.rig);
       d.ring.geometry.dispose();
       d.ring.material.dispose();
       ducks.delete(player.id);
       d = null;
     }
     d ||= makeDuck(player);
+    setRigTeam(d.rig, player.team);
     const previousRecovery = d.data?.recovery;
     d.data = player;
     if (player.id === myId && player.recovery && !previousRecovery)
@@ -801,6 +780,34 @@ function updateSceneState(state) {
       $("#you-orange").hidden = player.team !== "orange";
       $("#switch-team").textContent =
         player.team === "blue" ? "换到橙队" : "换到蓝队";
+      const cooldown = Math.ceil(player.chargeCooldown || 0);
+      const charging = player.charge > 0;
+      const chargeLabel = charging
+        ? "冲撞中"
+        : cooldown
+          ? cooldown + "s"
+          : "冲撞";
+      const chargeDisabled =
+        dancing ||
+        matchFinished ||
+        player.spectator ||
+        player.mode !== "walk" ||
+        !!player.recovery ||
+        player.kick > 0 ||
+        cooldown > 0;
+      for (const button of [$("#charge-action"), $("#touch-charge")]) {
+        button.disabled = chargeDisabled;
+        button.setAttribute(
+          "aria-label",
+          charging
+            ? "冲撞中"
+            : cooldown
+              ? "冲撞冷却，剩余 " + cooldown + " 秒"
+              : "加速冲撞",
+        );
+      }
+      $("#charge-action span").textContent = chargeLabel;
+      $("#touch-charge").textContent = chargeLabel;
       auto = player.auto;
       spectator = player.spectator;
       $("#autoplay").setAttribute("aria-pressed", auto);
@@ -816,6 +823,7 @@ function updateSceneState(state) {
     if (!seen.has(id)) {
       scene.remove(d.rig.placer, d.ring);
       d.label.remove();
+      disposeTeamSkin(d.rig);
       d.ring.geometry.dispose();
       d.ring.material.dispose();
       ducks.delete(id);
@@ -837,50 +845,103 @@ function updateSceneState(state) {
   $("#connection-text").textContent = state.ai
     ? "单人游玩 · 机器鸭陪练"
     : "单人游玩 · 自由练习";
-  if (state.goal && state.goal.revision > lastGoalRevision) {
+  updateMatchUI(state.match);
+  if (!matchFinished && state.goal && state.goal.revision > lastGoalRevision) {
     lastGoalRevision = state.goal.revision;
     showGoal(state.goal.team);
   }
 }
-function connect() {
-  clearTimeout(reconnectTimer);
-  if (ws) {
-    ws.onclose = null;
-    ws.close();
+
+function updateMatchUI(match) {
+  if (!match) return;
+  const previous = matchFinished;
+  matchKickoff = match.phase === "kickoff";
+  matchFinished = match.phase === "finished";
+  const locked = matchFinished || matchKickoff || dancing;
+  const time = formatMatchTime(match.remaining);
+  $("#match-clock").textContent = time;
+  $("#match-clock").setAttribute(
+    "datetime",
+    "PT" + Math.ceil(match.remaining) + "S",
+  );
+  $("#match-status").textContent = matchFinished
+    ? "全场结束"
+    : matchKickoff
+      ? "准备开球"
+      : dancing
+        ? "舞蹈暂停"
+        : "剩余时间";
+  $("#scoreboard").classList.toggle(
+    "last-minute",
+    !matchFinished && match.remaining <= 60,
+  );
+  $("#match-result").hidden = !matchFinished;
+  $("#reset-action span").textContent = matchFinished ? "新一局" : "重新开球";
+  for (const button of $$(
+    "[data-mode],#ai,#switch-team,#autoplay,#kick-action,#touch-kick,#charge-action,#touch-charge,#dance-action,[data-key],#touch-quack",
+  )) {
+    const charge =
+      button.id === "charge-action" || button.id === "touch-charge";
+    if (!charge) button.disabled = locked;
+    else if (locked) button.disabled = true;
   }
-  const url = new URL("/play", location.href);
-  url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  url.searchParams.set("name", $("#player-name").value.trim());
-  ws = new WebSocket(url);
-  $("#connection-text").textContent = "正在准备比赛";
-  ws.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      if (data.type === "welcome") {
-        myId = data.id;
-        lastGoalRevision = 0;
-        $(".status-dot").classList.remove("offline");
-        $("#scoreboard").hidden = false;
-      }
-      if (data.type === "state") updateSceneState(data);
-      if (data.type === "physics-error") {
-        $("#connection-text").textContent = data.message;
-        toast(data.message, 6000);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-  ws.onclose = (e) => {
+  $("#kickoff-countdown").hidden = !matchKickoff;
+  if (matchKickoff) {
+    const count = Math.ceil(match.kickoffRemaining);
+    $("#kickoff-number").textContent = count;
+    if (count !== lastCountdown && sound && entered)
+      playTone([count === 1 ? 660 : 440], 0.08);
+    lastCountdown = count;
     keys.clear();
+  } else lastCountdown = null;
+  if (matchFinished) {
+    const score = match.finalScore;
+    $("#result-title").textContent =
+      match.winner === "draw"
+        ? "本局平局"
+        : match.winner === "blue"
+          ? "海盐蓝队获胜"
+          : "汽水橙队获胜";
+    $("#result-title").className = match.winner === "draw" ? "" : match.winner;
+    $("#result-blue").textContent = score.blue;
+    $("#result-orange").textContent = score.orange;
+    clearTimeout(goalTimer);
+    $("#goal").hidden = true;
+    if (!previous) {
+      $("#keys").open = false;
+      clearTimeout(toastTimer);
+      $("#toast").classList.remove("visible");
+      $("#toast").textContent = "";
+      keys.clear();
+      if (entered && $("#preflight").hidden) $("#new-match").focus();
+    }
+  } else if (previous) {
+    keys.clear();
+    $("#world").focus();
+  }
+}
+
+async function connect() {
+  game?.dispose();
+  game = new BrowserGame();
+  $("#connection-text").textContent = "正在准备比赛";
+  game.onState = updateSceneState;
+  game.onError = (error) => {
+    loadError = error;
     $(".status-dot").classList.add("offline");
-    $("#connection-text").textContent =
-      e.code === 1008 ? "比赛尚未就绪，请刷新页面" : "本地引擎恢复中…";
-    if (e.code !== 1008) reconnectTimer = setTimeout(connect, 2000);
+    $("#connection-text").textContent = "准备失败，请重新加载";
+    $("#loading-message").textContent =
+      `加载失败：${error.message}。请重新加载球场。`;
+    $("#retry").hidden = false;
+    if (entered) toast("游戏运行中断，请刷新页面后重试。", 6000);
   };
-  ws.onerror = () => {
-    $("#connection-text").textContent = "请启动本地游戏服务后重试";
-  };
+  const id = await game.start($("#player-name").value.trim(), (p, text) =>
+    progress(0.35 + p * 0.65, text),
+  );
+  myId = id;
+  lastGoalRevision = 0;
+  $(".status-dot").classList.remove("offline");
+  $("#scoreboard").hidden = false;
 }
 function updateDanceUI(dance) {
   const active = !!dance;
@@ -892,7 +953,7 @@ function updateDanceUI(dance) {
     $("#dance-banner").hidden = !active;
     document.body.classList.toggle("dancing", active);
     for (const el of $$(
-      "[data-mode],#ai,#switch-team,#autoplay,#camera,#kick-action,#touch-kick",
+      "[data-mode],#ai,#switch-team,#autoplay,#camera,#kick-action,#touch-kick,#charge-action,#touch-charge",
     ))
       el.disabled = active;
     if (active) {
@@ -902,26 +963,56 @@ function updateDanceUI(dance) {
         target: controls.target.clone(),
         following,
         freeCamera,
+        offset: camera.position.clone().sub(controls.target),
       };
       following = false;
-      camera.position.set(0, 0.85, 2.15);
-      controls.target.set(0, 0.18, -0.12);
-      camera.zoom = Math.min(1, Math.max(0.55, camera.aspect / 0.9));
+      dancePerforming = false;
+      const offset = danceCamera.offset.clone();
+      if (offset.length() < 3.2) offset.setLength(3.2);
+      offset.y = Math.max(1.6, offset.y);
+      const target = new THREE.Vector3(0, 0.177, 0);
+      cameraTransition.start({
+        offset, target,
+        zoom: () => Math.min(1, Math.max(0.52, camera.aspect / 1.18)),
+        duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.65,
+      });
     } else if (danceCamera) {
-      camera.position.copy(danceCamera.position);
-      controls.target.copy(danceCamera.target);
-      following = danceCamera.following;
-      freeCamera = danceCamera.freeCamera;
-      camera.zoom = Math.min(1, Math.max(0.52, camera.aspect / 1.18));
+      const saved = danceCamera;
+      following = saved.following;
+      freeCamera = saved.freeCamera;
+      const target = following ? () => {
+        const mine = ducks.get(myId);
+        const position = mine?.rig.placer.position;
+        const player = snapshot?.players.find(p => p.id === myId);
+        return new THREE.Vector3(position?.x ?? player?.x ?? 0, 0.177, position?.z ?? player?.z ?? 0);
+      } : saved.target;
+      cameraTransition.start({
+        position: saved.position, target,
+        offset: following ? saved.offset : null,
+        zoom: () => Math.min(1, Math.max(0.52, camera.aspect / 1.18)),
+        duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.55,
+      });
       danceCamera = null;
     }
     camera.updateProjectionMatrix();
     controls.update();
   }
   if (!dance) return;
-  $("#dance-move").textContent = dance.time < 1 ? "全体集合！" : dance.move;
+  const performing = dance.phase === "dancing";
+  if (performing && !dancePerforming) {
+    dancePerforming = true;
+    cameraTransition.start({
+      position: new THREE.Vector3(0, 0.85, 2.15),
+      target: new THREE.Vector3(0, 0.18, -0.12),
+      zoom: () => Math.min(1, Math.max(0.55, camera.aspect / 0.9)),
+      duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.7,
+    });
+  }
+  $("#dance-move").textContent = !performing
+    ? dance.phase === "settling" ? "站稳了，准备开跳" : `正在集合 · ${dance.ready}/${dance.total} 就位`
+    : dance.move;
   const beat = Math.floor(dance.beat);
-  if (beat !== lastDanceBeat && dance.time > 1) {
+  if (performing && beat !== lastDanceBeat) {
     lastDanceBeat = beat;
     if (sound) playDanceBeat(beat);
   }
@@ -1058,7 +1149,7 @@ function render() {
   }
   const mine = ducks.get(myId);
   if (mine && entered) {
-    if (freeCamera && !dancing) {
+    if (freeCamera && !dancing && !cameraTransition.active) {
       const movement = new THREE.Vector3();
       camera.getWorldDirection(movement);
       movement.y = 0;
@@ -1081,7 +1172,7 @@ function render() {
       if (keys.has("KeyE")) delta.y += speed;
       camera.position.add(delta);
       controls.target.add(delta);
-    } else if (following && !dancing) {
+    } else if (following && !dancing && !cameraTransition.active) {
       const target = new THREE.Vector3(
         mine.rig.placer.position.x,
         0.177,
@@ -1098,12 +1189,18 @@ function render() {
       sendInput();
     }
   }
+  cameraTransition.update(dt);
   controls.update();
   renderer.render(scene, camera);
 }
 function sendInput() {
   if (!entered) return;
-  const blocked = dancing || freeCamera || !$("#preflight").hidden;
+  const blocked =
+    matchFinished ||
+    matchKickoff ||
+    dancing ||
+    freeCamera ||
+    !$("#preflight").hidden;
   send({
     type: "input",
     forward: blocked
@@ -1149,8 +1246,12 @@ async function enterGame(event) {
   if (entered) {
     send({ type: "rename", name });
   } else {
+    try {
+      await connect();
+    } catch {
+      return;
+    }
     entered = true;
-    connect();
   }
   $("#preflight").classList.add("dismissed");
   document.body.classList.remove("preflight-active");
@@ -1216,13 +1317,20 @@ $("#camera").onclick = () => {
   $("#camera span").textContent = "跟随小鸭";
   toast("自由视角：WASD 移动，Q / E 升降，拖动环顾");
 };
+$("#charge-action").onclick = () => send({ type: "charge" });
 $("#kick-action").onclick = () => send({ type: "kick" });
 $("#dance-action").onclick = () => send({ type: "dance" });
 function resetMatch() {
-  send({ type: "reset" });
-  toast("小鸭与足球已归位，重新开球！");
+  keys.clear();
+  send({ type: matchFinished ? "restart" : "reset" });
+  toast(
+    matchFinished
+      ? "新一局开球，5 分钟开始！"
+      : "全部小鸭与足球已归位，重新开球！",
+  );
 }
 $("#reset-action").onclick = resetMatch;
+$("#new-match").onclick = resetMatch;
 addEventListener("keydown", (e) => {
   if (
     e.target.matches?.(
@@ -1241,6 +1349,8 @@ addEventListener("keydown", (e) => {
   keys.add(e.code);
   sendInput();
   if (e.repeat) return;
+  if ((matchFinished || matchKickoff) && !["Space", "Escape"].includes(e.code))
+    return;
   if (e.code === "KeyX") {
     send({ type: "dance" });
     return;
@@ -1255,6 +1365,7 @@ addEventListener("keydown", (e) => {
   }
   if (e.code === "KeyM") quack();
   if (e.code === "KeyF") send({ type: "kick" });
+  if (e.code === "KeyR") send({ type: "charge" });
   if (e.code === "KeyC") resumeFollow();
   if (e.code === "Escape") {
     $("#keys").open = !$("#keys").open;
@@ -1285,6 +1396,7 @@ addEventListener("blur", () => {
   send({ type: "input", forward: 0, turn: 0 });
 });
 document.addEventListener("visibilitychange", () => {
+  game?.send({ type: "pause", value: document.hidden });
   if (document.hidden) {
     keys.clear();
     send({ type: "input", forward: 0, turn: 0 });
@@ -1307,6 +1419,7 @@ $$("[data-key]").forEach((b) => {
   b.addEventListener("lostpointercapture", release);
 });
 $("#touch-quack").onclick = quack;
+$("#touch-charge").onclick = () => send({ type: "charge" });
 $("#touch-kick").onclick = () => send({ type: "kick" });
 addEventListener("resize", () => {
   if (!renderer) return;

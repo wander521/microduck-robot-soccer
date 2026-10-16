@@ -1,3 +1,5 @@
+import { applyCommand } from "./src/commands.js";
+import { beginKickoff } from "./src/match.js";
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
@@ -8,8 +10,6 @@ import { loadPhysicsRuntime, PhysicsWorld } from "./src/physics/world.mjs";
 import {
   createRoom,
   addPlayer,
-  resetPlayer,
-  resetPlay,
   syncBots,
   tick,
   snapshot,
@@ -86,6 +86,7 @@ wss.on("connection", (ws, req) => {
   const p = addPlayer(room, id, name);
   room.clients.set(id, ws);
   syncBots(room);
+  beginKickoff(room);
   ws.send(JSON.stringify({ type: "welcome", id }));
   let lastInput = Date.now(),
     messages = 0,
@@ -100,49 +101,10 @@ wss.on("connection", (ws, req) => {
       if (++messages > 90) return;
       const m = JSON.parse(raw);
       lastInput = now;
-      if (room.dancing && !["dance", "reset", "rename"].includes(m.type))
-        return;
-      if (m.type === "dance") {
-        room.dancing = !room.dancing;
-        for (const actor of room.players.values()) {
-          actor.forward = 0;
-          actor.turn = 0;
-          actor.kickRequested = false;
-        }
-      }
-      if (m.type === "input") {
-        p.forward = Math.max(-1, Math.min(1, Number(m.forward) || 0));
-        p.turn = Math.max(-1, Math.min(1, Number(m.turn) || 0));
-      }
-      if (m.type === "mode" && ["walk", "roller"].includes(m.mode))
-        p.mode = m.mode;
-      if (m.type === "reset") resetPlay(room, p);
-      if (m.type === "spectator") {
-        p.spectator = !p.spectator;
-        if (p.spectator) {
-          p.z = FIELD.halfWidth + 0.2;
-          p.forward = 0;
-          p.turn = 0;
-          p.resetRevision++;
-          p.resetPose = { x: p.x, z: p.z, yaw: p.yaw };
-        } else resetPlayer(p);
-      }
-      if (m.type === "kick") p.kickRequested = true;
-      if (m.type === "quack") p.quack = 0.55;
-      if (m.type === "auto") p.auto = !!m.value;
-      if (m.type === "ai") {
-        room.ai = !!m.value;
-        syncBots(room);
-      }
-      if (m.type === "team") {
-        p.team = p.team === "blue" ? "orange" : "blue";
-        resetPlayer(p);
-        syncBots(room);
-      }
-      if (m.type === "rename")
-        p.name = String(m.name || "Guest Duck")
-          .trim()
-          .slice(0, 24);
+      if (m.type === "pause") {
+        room.paused = !!m.value;
+        room.lastTickAt = null;
+      } else applyCommand(room, p, m);
     } catch {}
   });
   const guard = setInterval(() => {
@@ -173,9 +135,14 @@ setInterval(async () => {
         room.physics?.dispose();
         continue;
       }
+      if (room.paused) continue;
       try {
         room.physics ??= new PhysicsWorld(physicsRuntime, room, FIELD);
-        await tick(room);
+        const now = performance.now();
+        const elapsed =
+          room.lastTickAt == null ? 0 : (now - room.lastTickAt) / 1000;
+        room.lastTickAt = now;
+        await tick(room, elapsed);
         if (!room.pendingDispose) {
           const data = JSON.stringify(snapshot(room));
           for (const ws of room.clients.values())

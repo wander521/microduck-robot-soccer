@@ -21,7 +21,7 @@
     <main id="game" aria-label="小鸭开球三维足球场">
       <canvas
         id="world"
-        aria-label="使用 W、S 移动，A、D 转向，F 踢球"
+        aria-label="使用 W、S 移动，A、D 转向，F 踢球，R 冲撞"
       ></canvas>
     </main>
     <header class="game-brand">
@@ -40,7 +40,16 @@
         ><span id="you-blue" class="you">你的队</span
         ><strong id="score-blue">0</strong>
       </div>
-      <div class="score-center"><span>友谊赛</span><b>VS</b></div>
+      <div class="score-center">
+        <span id="match-status">剩余时间</span
+        ><time
+          id="match-clock"
+          role="timer"
+          aria-label="比赛剩余时间"
+          datetime="PT300S"
+          >05:00</time
+        >
+      </div>
       <div class="team orange">
         <span class="team-name">汽水橙队</span
         ><span id="you-orange" class="you" hidden>你的队</span
@@ -88,8 +97,12 @@
               <dd>起脚射门</dd>
             </div>
             <div>
+              <dt><kbd>R</kbd></dt>
+              <dd>加速冲撞 · 冷却 9 秒</dd>
+            </div>
+            <div>
               <dt><kbd>Space</kbd></dt>
-              <dd>小鸭和足球归位</dd>
+              <dd>全场归位 / 终场再来一局</dd>
             </div>
             <div>
               <dt><kbd>M</kbd></dt>
@@ -108,7 +121,10 @@
               <dd>场外漫游</dd>
             </div>
           </dl>
-          <p class="camera-note">拖动环顾，滚轮缩放。按 Esc 收起菜单。</p>
+          <p class="camera-note">
+            每局 5
+            分钟，同分为平局。舞蹈和切到后台时暂停计时。拖动环顾，滚轮缩放。
+          </p>
           <details class="about">
             <summary>关于与鸣谢</summary>
             <div>
@@ -117,7 +133,8 @@
                 射门；蓝队向橙色球门进攻。月球基地保留正常重力，方便稳稳控球。
               </p>
               <p>
-                MicroDuck 模型与预训练步态来自 Pollen Robotics。场景为本地原创。
+                MicroDuck 模型与步态来自 Pollen Robotics。舞蹈使用单独训练的
+                DuckEMW 策略，场景为本地原创。
               </p>
               <p>
                 <a
@@ -135,11 +152,13 @@
                 >
               </p>
               <p>
-                <a href="/licenses/LICENSE-APACHE-2.0.txt" target="_blank"
+                <a
+                  href="%BASE_URL%licenses/LICENSE-APACHE-2.0.txt"
+                  target="_blank"
                   >Apache-2.0 软件</a
                 >
                 ·
-                <a href="/licenses/LICENSE-MODELS.md" target="_blank"
+                <a href="%BASE_URL%licenses/LICENSE-MODELS.md" target="_blank"
                   >模型 CC BY-NC-SA</a
                 >
               </p>
@@ -190,9 +209,11 @@
     <div class="play-hints">
       <span><kbd>W A S D</kbd> 移动</span
       ><button id="kick-action"><kbd>F</kbd> 射门</button
+      ><button id="charge-action" title="加速冲撞对手，冷却 9 秒">
+        <kbd>R</kbd><span>冲撞</span></button
       ><button id="dance-action" aria-pressed="false">
         <kbd>X</kbd><span>一起跳舞</span></button
-      ><button id="reset-action"><kbd>Space</kbd> 重新开球</button>
+      ><button id="reset-action"><kbd>Space</kbd><span>重新开球</span></button>
     </div>
     <div class="touch-controls" aria-label="触摸控制">
       <div class="dpad">
@@ -216,6 +237,7 @@
       </div>
       <div class="touch-actions">
         <button id="touch-quack">嘎嘎</button
+        ><button id="touch-charge" aria-label="冲撞，冷却 9 秒">冲撞</button
         ><button id="touch-kick">射门</button>
       </div>
     </div>
@@ -223,6 +245,41 @@
       <strong>小鸭舞团</strong><span id="dance-move">准备列队</span
       ><small>X 返回比赛</small>
     </div>
+    <div
+      id="kickoff-countdown"
+      class="kickoff-countdown"
+      role="status"
+      aria-live="polite"
+      hidden
+    >
+      <strong id="kickoff-number">3</strong><span>准备开球</span>
+    </div>
+    <section
+      id="match-result"
+      class="match-result"
+      aria-labelledby="result-title"
+      hidden
+    >
+      <h2 id="result-title">本局结束</h2>
+      <p>五分钟到，终场比分</p>
+      <div class="result-score" id="result-score" aria-label="终场比分">
+        <div class="blue">
+          <span>海盐蓝队</span><strong id="result-blue">0</strong>
+        </div>
+        <span class="result-divider" aria-hidden="true">:</span>
+        <div class="orange">
+          <span>汽水橙队</span><strong id="result-orange">0</strong>
+        </div>
+      </div>
+      <button
+        id="new-match"
+        class="primary"
+        aria-describedby="result-title result-score"
+      >
+        再来一局
+      </button>
+      <small>新一局重新计时、比分清零 · Space 也可开始</small>
+    </section>
     <div id="toast" role="status" aria-live="polite"></div>
     <div id="goal" role="status" aria-live="polite" hidden>
       <strong>GOOOAL!</strong><span></span>
@@ -260,7 +317,7 @@
               </svg>
             </button>
           </form>
-          <p class="note">单人游玩 · 机器鸭陪你一起踢</p>
+          <p class="note">每局 5 分钟 · 进球更多的一队获胜</p>
         </div>
         <div id="loading-state" hidden>
           <h1>系好小鸭的鞋带</h1>

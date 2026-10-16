@@ -1,0 +1,47 @@
+{
+  "schema": "microduck-game-dance-v1",
+  "id": "duckemw-local3090-4096-3500",
+  "file": "duckemw_dance.onnx",
+  "sha256": "2e6c33f93826cd0b325885a2577d22fcc93715625a4174dc08694fac61c2b436",
+  "source": {
+    "parent": "https://github.com/emwstudio/DuckEMW",
+    "parentRevision": "bdb870fd2e9b0329d7df70e06abc0d2262a38960",
+    "compatibleBase": "5946fd9cdbc58956424420153e51975af3b30d77",
+    "details": "reference/DANCE_POLICY.md"
+  },
+  "training": {
+    "task": "Mjlab-Dance-Flat-MicroDuck",
+    "parallelEnvironments": 4096,
+    "targetIterations": 4000,
+    "checkpointIteration": 3500,
+    "status": "complete",
+    "seed": 42,
+    "amplitudeRampSteps": 96000,
+    "completedIterations": 4000
+  },
+  "runtime": {
+    "observationSize": 61,
+    "actionSize": 14,
+    "policyHz": 50,
+    "physicsHz": 200,
+    "bodyCommand": "sin(pi*beat), cos(pi*beat), bpm/120, move bit 0, move bit 1, move bit 2",
+    "actuatorDelayPhysicsSteps": 4,
+    "jointVelocityDelayControlSteps": 1
+  },
+  "verification": {
+    "durationSeconds": 122,
+    "ducks": 4,
+    "finite": true,
+    "falls": 0,
+    "maxDriftMetres": 0.058552193730973034,
+    "maxTiltDegrees": 18.02058434764956,
+    "climaxVerticalSpanMm": 47.91041439556822,
+    "climaxHeadPitchSpanDeg": 55.70917964810954,
+    "climaxHeadYawSpanDeg": 11.541221940877856,
+    "climaxBodyRollSpanDeg": 34.76454199604111,
+    "medianBeatOffsetMs": 11.25000000255838,
+    "stressSeeds": 4,
+    "stressFalls": 0,
+    "nativeVsWasmMaxOutputError": 2.980232238769531e-07
+  }
+}

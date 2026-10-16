@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import {
   createRoom,
@@ -14,6 +14,9 @@ import {
 import { loadPhysicsRuntime, PhysicsWorld } from "../src/physics/world.mjs";
 import { velocityCommand, projectedGravity } from "../src/physics/constants.js";
 const runtime = await loadPhysicsRuntime();
+after(async () => {
+  await Promise.all(Object.values(runtime.policies).map(session => session.release()));
+});
 function roomWithPlayer() {
   const room = createRoom();
   room.ai = false;
@@ -288,7 +291,7 @@ test("a stationary ball is gently released from a sideline and corner", async ()
   }
 });
 
-test("X forms a synchronized line, dances, freezes the match and restores physics", async () => {
+test("X walks into a line and uses the trained dance policy before resuming from the reached pose", async () => {
   const { room, player, world } = roomWithPlayer();
   try {
     room.ai = true;
@@ -299,36 +302,374 @@ test("X forms a synchronized line, dances, freezes the match and restores physic
     world.setBall({ x: 0.42, z: 0.12, y: 0.05, vx: 0.2 });
     const ball = world.readBall();
     const simulationTime = world.data.time;
+    let policyCalls = 0, moved = false, peakJointChange = 0;
+    const control = world.control.bind(world);
+    world.control = async (...args) => { policyCalls++; await control(...args); };
     room.dancing = true;
-    await steps(room, 75);
-    const actors = [...room.players.values()];
+    await tick(room);
+    assert.equal(room.dance.phase, "forming");
+    assert.equal(room.dance.beat, 0);
+    let previous = world.saveStates();
+    for (let i = 0; i < 1250 && room.dance.phase !== "dancing"; i++) {
+      await tick(room);
+      for (const p of room.players.values()) {
+        const before = previous.get(p.id).position;
+        assert.ok(Math.hypot(p.x - before[0], p.z + before[1]) < 0.025,
+          "no root-position jump while forming or at the dance handoff");
+        moved ||= Math.hypot(p.x - saved.get(p.id).position[0], p.z + saved.get(p.id).position[1]) > 0.1;
+        peakJointChange = Math.max(peakJointChange,
+          ...p.joints.map((v, j) => Math.abs(v - saved.get(p.id).joints[j])));
+      }
+      previous = world.saveStates();
+    }
+    assert.equal(room.dance.phase, "dancing");
+    assert.ok(policyCalls > 100 && moved && peakJointChange > 0.1);
+    assert.ok(world.data.time > simulationTime + 2, "formation uses actual physics steps");
+    const actors = [...room.players.values()].sort((a, b) => a.x - b.x);
     assert.equal(actors.length, 4);
     assert.equal(room.dance.bpm, 128);
     actors.forEach((p, i) => {
-      assert.ok(Math.abs(p.x - (i - 1.5) * 0.48) < 0.03);
-      assert.ok(Math.abs(p.z + 0.12) < 1e-8);
+      assert.ok(Math.abs(p.x - (i - 1.5) * 0.48) < 0.085);
+      assert.ok(Math.abs(p.z + 0.12) < 0.085);
       assert.ok(p.joints.every(Number.isFinite));
     });
+    const pausedTime = world.data.time;
+    await steps(room, 75);
     const pose = [...player.joints];
     await steps(room, 10);
     assert.ok(player.joints.some((v, j) => Math.abs(v - pose[j]) > 0.02));
     assert.deepEqual(room.scores, scores);
-    assert.equal(world.data.time, simulationTime);
+    assert.ok(world.data.time > pausedTime + 1.6, "trained choreography advances actual physics");
+    assert.equal(room.dance.engine, "onnx");
+    assert.equal(room.dance.policy, runtime.danceInfo.id);
+    assert.equal(room.dance.falls, 0);
     assert.ok(Math.abs(room.balls[0].x - ball.x) < 1e-8);
-    assert.ok(Math.abs(room.balls[0].vx - ball.vx) < 1e-8);
+    assert.equal(room.balls[0].vx, 0);
+    const reached = world.saveStates();
     room.dancing = false;
     await tick(room);
     assert.equal(room.dance, null);
-    assert.ok(Math.abs(player.x - saved.get(player.id).position[0]) < 0.02);
-    assert.ok(world.data.time > simulationTime);
-    // Space also exits the interlude and resets both actors and football.
+    for (const p of room.players.values()) {
+      const last = reached.get(p.id).position;
+      assert.ok(Math.hypot(p.x - last[0], p.z + last[1]) < .025, "X must keep the current dance position");
+    }
+    assert.ok(world.data.time > pausedTime);
+    await steps(room, 100);
+    assert.ok([...room.players.values()].some(p => p.bot &&
+      Math.hypot(p.x - reached.get(p.id).position[0], p.z + reached.get(p.id).position[1]) > .05),
+      "AI resumes chasing from the dance positions");
+    // Space must also cancel while the robots are still walking to the line.
     room.dancing = true;
-    await steps(room, 60);
+    await steps(room, 25);
+    assert.equal(room.dance.phase, "forming");
     resetPlay(room, player);
     await tick(room);
     assert.equal(room.dance, null);
     assert.ok(Math.abs(player.x + 0.2) < 0.01);
     assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
+  } finally { world.dispose(); }
+});
+
+test("formation completes from crowded and dispersed starts without exchanging left-to-right slots", async () => {
+  for (const poses of [
+    [[-.3, 0, 0], [0, 0, Math.PI], [.3, 0, 1], [0, -.3, -1]],
+    [[-1.2, -.65, 1], [1.2, .65, -2], [-.5, .6, 0], [.6, -.65, 2]],
+  ]) {
+    const room = createRoom(); room.ai = false;
+    poses.forEach(([x, z, yaw], i) => {
+      const p = addPlayer(room, String(i), "Duck");
+      p.resetPose = {x, z, yaw};
+    });
+    const world = room.physics = new PhysicsWorld(runtime, room, FIELD);
+    try {
+      await steps(room, 50);
+      const order = [...room.players.values()].sort((a, b) => a.x - b.x).map(p => p.id);
+      room.dancing = true;
+      for (let i = 0; i < 1500 && room.dance?.phase !== "dancing"; i++) await tick(room);
+      assert.equal(room.dance.phase, "dancing");
+      const actors = [...room.players.values()].sort((a, b) => a.x - b.x);
+      assert.deepEqual(actors.map(p => p.id), order);
+      for (const p of actors) {
+        assert.ok(p.height > .08);
+        assert.ok(Math.abs(p.z + .12) < .09);
+      }
+    } finally { world.dispose(); }
+  }
+});
+
+test("X cancels formation in place and restores roller mode; Space during inference still resets the ball", async () => {
+  const {room, player, world} = roomWithPlayer();
+  try {
+    player.mode = "roller";
+    await steps(room, 50);
+    const before = world.saveStates().get(player.id);
+    room.dancing = true;
+    await steps(room, 150);
+    assert.equal(player.mode, "walk");
+    const atCancel = {x: player.x, z: player.z};
+    room.dancing = false;
+    await tick(room);
+    assert.equal(room.dance, null);
+    assert.equal(player.mode, "roller");
+    assert.ok(Math.hypot(player.x - atCancel.x, player.z - atCancel.z) < .02);
+    assert.ok(Math.abs(player.x - before.position[0]) > .04);
+    assert.equal(world.slots.get(player.id).extra.length, 4);
+    world.setBall({x:.6, z:.4, vx:1, angular:[1,2,3]});
+    const control = world.control.bind(world);
+    let reset = false;
+    world.control = async (...args) => {
+      await control(...args);
+      if (!reset) {reset = true; resetPlay(room, player);}
+    };
+    room.dancing = true;
+    await tick(room);
+    assert.equal(room.dance, null);
+    assert.equal(player.mode, "roller");
+    assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
+    assert.ok(Math.hypot(room.balls[0].vx, room.balls[0].vz) < 1e-8);
+  } finally {world.dispose();}
+});
+
+test("trained ONNX dance stays physical for a full phrase and Space cancels in-flight dance inference", async () => {
+  const {room, player, world} = roomWithPlayer();
+  try {
+    room.ai = true; syncBots(room);
+    await steps(room, 50);
+    room.dancing = true;
+    for (let i = 0; i < 1500 && room.dance?.phase !== "dancing"; i++) await tick(room);
+    assert.equal(room.dance.phase, "dancing");
+    const start = world.data.time;
+    let min = player.height, max = player.height, calls = 0;
+    const session = runtime.policies.dance;
+    world.runtime = {...runtime, policies: {...runtime.policies, dance: {
+      inputNames: session.inputNames, outputNames: session.outputNames,
+      async run(...args) {calls++; return session.run(...args);},
+    }}};
+    for (let i = 0; i < 2100; i++) {
+      await tick(room);
+      min = Math.min(min, player.height); max = Math.max(max, player.height);
+      assert.ok([...world.data.qpos, ...world.data.qvel].every(Number.isFinite));
+    }
+    assert.equal(calls, 4 * 2100);
+    assert.equal(room.dance.falls, 0);
+    assert.ok(world.data.time > start + 41.9);
+    assert.ok(max - min > .012, "motion comes from actual trained dynamics");
+    world.runtime.policies.dance.run = async (...args) => {
+      const output = await session.run(...args);
+      resetPlay(room, player);
+      return output;
+    };
+    await tick(room);
+    assert.equal(room.dance, null);
+    assert.ok(Math.abs(player.x + .2) < .01);
+    assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
+  } finally {world.dispose();}
+});
+
+test("ball-aware kick returns through the trained stand controller and can walk away", async () => {
+  const { room, player, world } = roomWithPlayer();
+  try {
+    // Isolate locomotion from goal resets, covered by the kickoff test below.
+    room.balls[0].cooldown = 100;
+    world.setBall({ x: 1, z: 0.7, y: 0.05 });
+    await steps(room, 50);
+    world.setBall({ x: player.x + 0.13, z: player.z - 0.035, y: 0.05 });
+    room.balls[0] = world.readBall();
+    player.kickRequested = true;
+    player.kickSource = "manual";
+    let handoff = false,
+      peak = 0;
+    for (let i = 0; i < 200; i++) {
+      await tick(room);
+      handoff ||= world.slots.get(player.id).footballHandoff > 0;
+      peak = Math.max(peak, Math.hypot(room.balls[0].vx, room.balls[0].vz));
+      assert.equal(player.recovery, null);
+      assert.ok(projectedGravity(player.quat)[2] < -0.75);
+    }
+    assert.ok(handoff && peak > 0.5);
+    const start = { x: player.x, z: player.z, yaw: player.yaw };
+    player.forward = 1;
+    await steps(room, 125);
+    assert.ok(
+      (player.x - start.x) * Math.cos(start.yaw) -
+        (player.z - start.z) * Math.sin(start.yaw) >
+        0.1,
+    );
+  } finally {
+    world.dispose();
+  }
+});
+
+test("R requires real opponent contact; the impact can topple an opponent who then gets up", async () => {
+  const room = createRoom();
+  room.ai = false;
+  const player = addPlayer(room, "a", "Attacker", "blue");
+  Object.assign(player, { x: -0.8, z: 0 });
+  const defender = addPlayer(room, "b", "Defender", "orange");
+  Object.assign(defender, { x: -0.5, z: 0, yaw: Math.PI });
+  const world = (room.physics = new PhysicsWorld(runtime, room, FIELD));
+  try {
+    world.setBall({ x: 1.2, z: 0.7, y: 0.05 });
+    await steps(room, 50);
+    player.chargeRequested = true;
+    let hit = false,
+      fallen = false;
+    for (let i = 0; i < 250; i++) {
+      await tick(room);
+      hit ||= player.chargeHit;
+      fallen ||= projectedGravity(defender.quat)[2] > -0.5;
+      assert.ok(
+        [...world.data.qpos, ...world.data.qvel].every(Number.isFinite),
+      );
+    }
+    assert.ok(hit && fallen);
+    assert.equal(defender.recovery, null);
+    assert.ok(projectedGravity(defender.quat)[2] < -0.88);
+    assert.ok(player.chargeCooldown > 0);
+    assert.ok(world.data.qfrc_applied.every((v) => v === 0));
+  } finally {
+    world.dispose();
+  }
+});
+
+test("Space resets all physical ducks and the ball after in-flight inference completes", async () => {
+  const {room,player,world}=roomWithPlayer();
+  room.ai=true;syncBots(room);
+  try{
+    await steps(room,40);
+    world.setBall({x:.8,z:.55,y:.15,vx:.5,vz:.4,angular:[2,1,3]});
+    const revisions=new Map();
+    for(const p of room.players.values()){
+      revisions.set(p.id,p.resetRevision);
+      const slot=world.slots.get(p.id);
+      world.data.qpos[slot.baseQ]=.9;
+      world.data.qpos[slot.baseQ+1]=-.6;
+      world.data.qvel[slot.baseV]=.6;
+      slot.kickTime=.3;slot.footballHandoff=.5;
+      slot.recovery="stand";slot.recoveryTime=.2;
+      p.charge=.8;p.chargeCooldown=8;
+    }
+    world.runtime.mj.mj_forward(world.model,world.data);
+    const control=world.control.bind(world);
+    let reset=false;
+    world.control=async(...args)=>{
+      await control(...args);
+      if(!reset){reset=true;resetPlay(room,player);}
+    };
+    await tick(room);
+    world.control=control;
+    for(const p of room.players.values()){
+      const slot=world.slots.get(p.id);
+      assert.equal(p.resetRevision,revisions.get(p.id)+1);
+      assert.equal(slot.resetRevision,p.resetRevision);
+      assert.equal(slot.kickTime,0);assert.equal(slot.footballHandoff,0);
+      assert.equal(slot.recovery,null);assert.equal(p.recovery,null);
+      assert.equal(p.kick,0);assert.equal(p.charge,0);assert.equal(p.chargeCooldown,0);
+      const expected=p.id===player.id?{x:-.2,z:0}
+        :{x:p.team==="blue"?-.65:.65,z:p.id==="bot-2"?.28:-.28};
+      assert.ok(Math.hypot(p.x-expected.x,p.z-expected.z)<.01);
+      assert.ok(Math.hypot(world.data.qvel[slot.baseV],world.data.qvel[slot.baseV+1])<.02);
+      for(const other of room.players.values())if(other!==p)
+        assert.ok(Math.hypot(p.x-other.x,p.z-other.z)>.3);
+    }
+    const ball=world.readBall();
+    assert.ok(Math.hypot(ball.x,ball.z,ball.vx,ball.vz)<1e-8);
+    assert.ok(ball.angular.every(v=>Math.abs(v)<1e-8));
+    assert.ok(world.data.qfrc_applied.every(v=>v===0));
+  }finally{world.dispose();}
+});
+
+test("a goal resets every duck and ball before 3-2-1, then the same match resumes", async () => {
+  const { room, player, world } = roomWithPlayer();
+  room.ai = true;
+  syncBots(room);
+  try {
+    await steps(room, 30);
+    room.match.remaining = 123;
+    const revisions = new Map(
+      [...room.players.values()].map((p) => [p.id, p.resetRevision]),
+    );
+    world.setBall({ x: FIELD.halfLength + 0.03, z: 0, y: 0.05, vx: 0.1 });
+    await tick(room, 0.02);
+    assert.deepEqual(room.scores, { blue: 1, orange: 0 });
+    assert.equal(room.match.phase, "kickoff");
+    assert.equal(room.match.kickoffRemaining, 3);
+    const remaining = room.match.remaining;
+    for (const p of room.players.values()) {
+      assert.equal(p.resetRevision, revisions.get(p.id) + 1);
+      assert.equal(world.slots.get(p.id).resetRevision, p.resetRevision);
+      assert.equal(p.charge, 0);
+      assert.equal(p.kick, 0);
+      assert.equal(p.recovery, null);
+      assert.ok(p.team === "blue" ? p.x < 0 : p.x > 0);
+      for (const q of room.players.values())
+        if (q !== p) assert.ok(Math.hypot(p.x - q.x, p.z - q.z) > 0.3);
+    }
+    assert.ok(
+      Math.hypot(
+        room.balls[0].x,
+        room.balls[0].z,
+        room.balls[0].vx,
+        room.balls[0].vz,
+      ) < 1e-8,
+    );
+    for (const count of [2, 1]) {
+      await tick(room, 1);
+      assert.equal(Math.ceil(room.match.kickoffRemaining), count);
+      assert.equal(room.match.remaining, remaining);
+      assert.deepEqual(room.scores, { blue: 1, orange: 0 });
+      assert.ok(
+        [...room.players.values()].every(
+          (p) => p.forward === 0 && p.charge === 0,
+        ),
+      );
+    }
+    await tick(room, 1);
+    assert.equal(room.match.phase, "playing");
+    assert.equal(room.match.remaining, remaining);
+    await tick(room, 0.2);
+    assert.ok(room.match.remaining < remaining);
+  } finally {
+    world.dispose();
+  }
+});
+
+test("the whistle freezes physics and rejects a late goal; restart restores five minutes", async () => {
+  const { room, player, world } = roomWithPlayer();
+  try {
+    await steps(room, 30);
+    room.match.remaining = 0.01;
+    world.setBall({ x: FIELD.halfLength + 0.03, z: 0, y: 0.05 });
+    const elapsed = world.elapsed;
+    await tick(room, 0.02);
+    assert.equal(room.match.phase, "finished");
+    assert.equal(room.match.winner, "draw");
+    assert.deepEqual(room.scores, { blue: 0, orange: 0 });
+    assert.equal(world.elapsed, elapsed);
+    await tick(room, 10);
+    assert.equal(world.elapsed, elapsed);
+    const { applyCommand } = await import("../src/commands.js");
+    applyCommand(room, player, { type: "restart" });
+    assert.equal(room.match.remaining, 300);
+    await tick(room, 0);
+    assert.equal(room.match.phase, "kickoff");
+    assert.ok(Math.hypot(room.balls[0].x, room.balls[0].z) < 1e-8);
+  } finally {
+    world.dispose();
+  }
+});
+
+test("goal mouth collision and scoring use the smaller shared width", async () => {
+  const { room, world } = roomWithPlayer();
+  try {
+    assert.equal(FIELD.goalHalfWidth, 0.36);
+    assert.equal(FIELD.goalHeight, 0.28);
+    world.setBall({ x: FIELD.halfLength - 0.06, z: 0.43, y: 0.05, vx: 1 });
+    await steps(room, 20);
+    assert.equal(room.scores.blue, 0);
+    world.setBall({ x: FIELD.halfLength + 0.03, z: 0, y: 0.05 });
+    await tick(room);
+    assert.equal(room.scores.blue, 1);
   } finally {
     world.dispose();
   }

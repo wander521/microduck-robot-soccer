@@ -1,23 +1,26 @@
+import { createMatch, advanceMatch, beginKickoff } from "./match.js";
+import { resetCharge, updateCharges } from "./charge.js";
+import { updateFootballAI, resetFootballAI } from "./football-ai.js";
 // Server-authoritative football simulation. Units: metres, seconds, radians.
 export const FIELD = {
   halfLength: 1.575,
   halfWidth: 0.93,
-  goalHalfWidth: 0.45,
+  goalHalfWidth: 0.36,
   goalDepth: 0.24,
-  goalHeight: 0.32,
+  goalHeight: 0.28,
   runoff: 0.34,
   ballRadius: 0.05,
 };
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const angleDifference = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 export const BALL_COUNT = 1;
 export function createRoom() {
   return {
     players: new Map(),
+    match: createMatch(),
     balls: [{ id: 0, x: 0, z: 0, y: 0.05, vx: 0, vz: 0, cooldown: 0 }],
     scores: { blue: 0, orange: 0 },
     ai: true,
     dancing: false,
+    goalResetPending: false,
     dance: null,
     goal: null,
     revision: 0,
@@ -55,24 +58,49 @@ export function addPlayer(room, id, name, team) {
     p.z = room.players.size % 2 ? 0.25 : -0.25;
     p.yaw = p.team === "blue" ? 0 : Math.PI;
   }
+  resetCharge(p);
   room.players.set(id, p);
   return p;
 }
-export function resetPlayer(p) {
-  p.x = p.team === "blue" ? -0.2 : 0.2;
-  p.z = 0;
-  p.yaw = p.team === "blue" ? 0 : Math.PI;
+export function resetPlayer(p, pose = null) {
+  resetCharge(p);
+  p.x = pose?.x ?? (p.team === "blue" ? -0.2 : 0.2);
+  p.z = pose?.z ?? 0;
+  p.yaw = pose?.yaw ?? (p.team === "blue" ? 0 : Math.PI);
   p.spectator = false;
   p.speed = 0;
+  p.kick = 0;
+  p.quack = 0;
+  p.recovery = null;
   p.forward = 0;
   p.turn = 0;
   p.kickRequested = false;
+  p.kickFoot = null;
+  p.kickSource = null;
   p.resetRevision = (p.resetRevision || 0) + 1;
   p.resetPose = { x: p.x, z: p.z, yaw: p.yaw };
 }
 export function resetPlay(room, player) {
   room.dancing = false;
-  resetPlayer(player);
+  room.goalResetPending = false;
+  resetFootballAI(room);
+  const captain =
+    room.players.get(player?.id) || room.players.values().next().value;
+  const counts = { blue: 0, orange: 0 };
+  for (const actor of room.players.values()) {
+    if (actor === captain) {
+      resetPlayer(actor);
+      continue;
+    }
+    // Match the spread-out kickoff formation, never stack teammates together.
+    const index = counts[actor.team]++;
+    resetPlayer(actor, {
+      x:
+        (actor.team === "blue" ? -1 : 1) *
+        (0.65 + Math.floor(index / 2) * 0.32),
+      z: index % 2 ? 0.28 : -0.28,
+    });
+  }
   room.ballResetPending = true;
 }
 export function syncBots(room) {
@@ -104,39 +132,38 @@ export function syncBots(room) {
     p.yaw = p.team === "blue" ? 0 : Math.PI;
   }
 }
-function driveAI(p, room) {
-  if (p.spectator) return;
-  let closest = null,
-    d = Infinity;
-  for (const b of room.balls) {
-    const n = Math.hypot(b.x - p.x, b.z - p.z);
-    if (n < d) {
-      closest = b;
-      d = n;
-    }
-  }
-  if (!closest) return;
-  const dir = p.team === "blue" ? 1 : -1;
-  let tx = closest.x - dir * 0.13,
-    tz = closest.z; // get behind the ball before shooting
-  if (d < 0.22 && dir * (closest.x - p.x) > 0) {
-    tx = closest.x + dir * 0.16;
-    tz = closest.z * 0.3;
-  }
-  const delta = angleDifference(Math.atan2(-(tz - p.z), tx - p.x), p.yaw);
-  p.turn = clamp(delta * 2, -1, 1);
-  p.forward =
-    Math.abs(delta) < 1.2
-      ? clamp(Math.hypot(tx - p.x, tz - p.z) * 4, 0.1, 1)
-      : 0.06;
-  if (d < 0.22 && Math.abs(delta) < 0.5 && p.kick <= 0) p.kickRequested = true;
+export function restartMatch(room, player) {
+  room.match = createMatch(room.match.round + 1);
+  room.scores = { blue: 0, orange: 0 };
+  room.goal = null;
+  room.revision++;
+  resetPlay(room, player);
+  beginKickoff(room);
 }
-export async function tick(room) {
+export async function tick(room, elapsedSeconds = 0.02) {
   if (!room.physics) throw new Error("MuJoCo physics has not been initialized");
-  if (!room.dancing)
-    for (const p of room.players.values())
-      if (p.bot || p.auto) driveAI(p, room);
+  advanceMatch(room, elapsedSeconds);
+  if (room.match.phase === "finished") return;
+  if (room.match.phase === "kickoff") {
+    for (const p of room.players.values()) {
+      p.forward = p.turn = 0;
+      p.kickRequested = false;
+      resetCharge(p);
+    }
+  } else {
+    if (!room.dancing) updateFootballAI(room, FIELD);
+    updateCharges(room);
+  }
   await room.physics.step();
+  if (room.goalResetPending) {
+    const captain =
+      [...room.players.values()].find((p) => !p.bot) ||
+      room.players.values().next().value;
+    resetPlay(room, captain);
+    beginKickoff(room);
+    room.physics.applyPendingResets();
+    room.physics.syncState();
+  }
 }
 export function snapshot(room) {
   return {
@@ -158,8 +185,13 @@ export function snapshot(room) {
       spectator: p.spectator,
       auto: p.auto,
       bot: !!p.bot,
+      footballRole: p.footballRole,
+      footballStage: p.footballStage,
       quack: p.quack,
       kick: p.kick,
+      charge: p.charge,
+      chargeCooldown: p.chargeCooldown,
+      chargeHit: p.chargeHit,
     })),
     balls: room.balls.map((b) => ({
       id: b.id,
@@ -170,7 +202,11 @@ export function snapshot(room) {
       vz: b.vz,
       quat: b.quat,
     })),
-    scores: room.scores,
+    scores: { ...room.scores },
+    match: {
+      ...room.match,
+      finalScore: room.match.finalScore ? { ...room.match.finalScore } : null,
+    },
     goal: room.goal,
     ai: room.ai,
     dance: room.dance,
