@@ -166,6 +166,8 @@ npm test
 BASE_PATH=/microduck-robot-soccer/ npm run build
 ```
 
+加载与渲染优化的实测数据、范围和复现方法见 [性能报告](reference/PERFORMANCE.md)。
+
 普通测试默认跳过两个需独立原生服务的协议测试。如需运行它们，在终端一执行 `PORT=5178 npm run dev:native`，终端二执行：
 
 ```sh

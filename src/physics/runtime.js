@@ -7,9 +7,7 @@ function physicsTemplate(xml) {
       geom.parentNode.removeChild(geom);
   return doc;
 }
-export async function createPhysicsRuntime({
-  mj,
-  ort,
+async function loadRuntimeAssets({
   readText,
   readBinary,
   createPolicy,
@@ -61,16 +59,6 @@ export async function createPhysicsRuntime({
         .filter(Boolean),
     ),
   );
-  const vfs = new mj.MjVFS();
-  const meshes = await Promise.all(
-    [...used].map(async (name) => [
-      name,
-      await readBinary(`robot/meshes/${name}.stl`),
-    ]),
-  );
-  for (const [name, data] of meshes)
-    vfs.addBuffer(`assets/${name}.stl`, new Uint8Array(data));
-  onProgress(0.5, "物理球场已就绪，正在加载小鸭步态…");
   const files = {
     walk: "BEST_alpha_walking.onnx",
     stand: "BEST_alpha_stand.onnx",
@@ -80,33 +68,38 @@ export async function createPhysicsRuntime({
     dance: "duckemw_dance.onnx",
   };
   if (footballInfo.enabled) files.football = footballInfo.file;
+  const plans = Object.entries(files).map(([key, file]) => {
+    const revision = key === "dance" ? danceInfo.sha256
+      : key === "football" ? footballInfo.sha256 : null;
+    return { key, path: `policies/${file}${revision ? "?sha256=" + revision : ""}` };
+  });
+  // Fetch independent collision meshes and policy bytes together. Session creation
+  // stays sequential: ONNX's shared WASM factory must initialize only once.
+  const [meshes, binaries] = await Promise.all([
+    Promise.all([...used].map(async name => [
+      name, await readBinary(`robot/meshes/${name}.stl`),
+    ])),
+    Promise.all(plans.map(({ path }) => readBinary(path))),
+  ]);
+  onProgress(0.5, "物理球场已就绪，正在加载小鸭步态…");
   const policies = {};
-  let loaded = 0;
-  // Sequential session creation avoids concurrent WASM initialization on static hosts.
-  for (const [key, file] of Object.entries(files)) {
-    const revision =
-      key === "dance"
-        ? danceInfo.sha256
-        : key === "football"
-          ? footballInfo.sha256
-          : null;
-    policies[key] = await createPolicy(
-      `policies/${file}${revision ? "?sha256=" + revision : ""}`,
-    );
-    onProgress(
-      0.5 + (++loaded / Object.keys(files).length) * 0.45,
-      "正在准备行走、射门与舞步…",
-    );
+  for (const [index, { key, path }] of plans.entries()) {
+    policies[key] = await createPolicy(path, binaries[index]);
+    onProgress(0.5 + ((index + 1) / plans.length) * 0.45,
+      "正在准备行走、射门与舞步…");
   }
-  return {
-    mj,
-    ort,
-    vfs,
-    templates,
-    used,
-    policies,
-    danceInfo,
-    footballInfo: footballInfo.enabled ? footballInfo : null,
-    engineVersion: mj.mj_versionString(),
-  };
+  return { templates, used, meshes, policies, danceInfo,
+    footballInfo: footballInfo.enabled ? footballInfo : null };
+}
+
+export async function createPhysicsRuntime(options) {
+  // MuJoCo loading/compilation is independent of asset downloads and ONNX setup.
+  // Accept a ready engine (native) or its promise (browser) without serializing them.
+  const [mj, assets] = await Promise.all([options.mj, loadRuntimeAssets(options)]);
+  const vfs = new mj.MjVFS();
+  for (const [name, data] of assets.meshes)
+    vfs.addBuffer(`assets/${name}.stl`, new Uint8Array(data));
+  const { meshes, ...runtimeAssets } = assets;
+  return { ...runtimeAssets, mj, ort: options.ort, vfs,
+    engineVersion: mj.mj_versionString() };
 }

@@ -173,6 +173,8 @@ npm test
 BASE_PATH=/microduck-robot-soccer/ npm run build
 ```
 
+See [performance measurements and reproduction steps](reference/PERFORMANCE.md) for the loading and rendering optimization results.
+
 Two optional protocol tests are skipped by default because they need a separate native helper. In one terminal, run `PORT=5178 npm run dev:native`; in another:
 
 ```sh

@@ -1,0 +1,121 @@
+{
+  "base": "5b35a9424477bb712a0bade303d3524ee365c4f9",
+  "coldTrialsMs": {
+    "before": [
+      22152,
+      22217,
+      22185
+    ],
+    "optimized": [
+      21496,
+      21436,
+      21661
+    ]
+  },
+  "runtime": [
+    {
+      "device": "desktop",
+      "scene": "moon-base",
+      "before": {
+        "fps": 60.193980601939806,
+        "frameP95Ms": 16.700000000004366,
+        "mainThreadSeconds": 2.1973689999999997,
+        "layoutCount": 1054,
+        "layoutSeconds": 0.13666899999999998,
+        "domMutations": 17757,
+        "drawCalls": 494,
+        "triangles": 801630,
+        "longTasks": 0
+      },
+      "after": {
+        "fps": 60.193980601939806,
+        "frameP95Ms": 16.700000000004366,
+        "mainThreadSeconds": 1.1189400000000003,
+        "layoutCount": 13,
+        "layoutSeconds": 0.0016469999999999992,
+        "domMutations": 2968,
+        "drawCalls": 333,
+        "triangles": 804010,
+        "longTasks": 0
+      }
+    },
+    {
+      "device": "desktop",
+      "scene": "little-world",
+      "before": {
+        "fps": 60.08798240351929,
+        "frameP95Ms": 16.700000000004366,
+        "mainThreadSeconds": 2.044709,
+        "layoutCount": 1043,
+        "layoutSeconds": 0.13762500000000005,
+        "domMutations": 17353,
+        "drawCalls": 442,
+        "triangles": 808646,
+        "longTasks": 0
+      },
+      "after": {
+        "fps": 60.3060306030603,
+        "frameP95Ms": 16.700000000004366,
+        "mainThreadSeconds": 1.0700249999999998,
+        "layoutCount": 16,
+        "layoutSeconds": 0.0017919999999999985,
+        "domMutations": 2247,
+        "drawCalls": 341,
+        "triangles": 808646,
+        "longTasks": 0
+      }
+    },
+    {
+      "device": "mobile",
+      "scene": "moon-base",
+      "before": {
+        "fps": 60.98288897731795,
+        "frameP95Ms": 16.700000000004366,
+        "mainThreadSeconds": 8.884181000000002,
+        "layoutCount": 5242,
+        "layoutSeconds": 0.85683,
+        "domMutations": 24645,
+        "drawCalls": 429,
+        "triangles": 799986,
+        "longTasks": 0
+      },
+      "after": {
+        "fps": 60.3120624124825,
+        "frameP95Ms": 16.799999999995634,
+        "mainThreadSeconds": 4.085095,
+        "layoutCount": 12,
+        "layoutSeconds": 0.00384000000000001,
+        "domMutations": 628,
+        "drawCalls": 330,
+        "triangles": 803902,
+        "longTasks": 0
+      }
+    },
+    {
+      "device": "mobile",
+      "scene": "little-world",
+      "before": {
+        "fps": 59.67016491754122,
+        "frameP95Ms": 16.80000000000291,
+        "mainThreadSeconds": 7.377966999999998,
+        "layoutCount": 5184,
+        "layoutSeconds": 0.774367,
+        "domMutations": 21015,
+        "drawCalls": 389,
+        "triangles": 807646,
+        "longTasks": 0
+      },
+      "after": {
+        "fps": 60.29397060293971,
+        "frameP95Ms": 16.700000000004366,
+        "mainThreadSeconds": 4.066844999999999,
+        "layoutCount": 14,
+        "layoutSeconds": 0.004581999999999989,
+        "domMutations": 640,
+        "drawCalls": 341,
+        "triangles": 808646,
+        "longTasks": 0
+      }
+    }
+  ]
+}

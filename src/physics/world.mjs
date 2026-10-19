@@ -11,9 +11,9 @@ export function loadPhysicsRuntime() {
       mj: await loadMujoco(),
       ort,
       readText: (path) => readFile(resolve("public/assets", path), "utf8"),
-      readBinary: (path) => readFile(resolve("public/assets", path)),
-      createPolicy: (path) =>
-        ort.InferenceSession.create(resolve("public/assets", path.split("?")[0]), {
+      readBinary: (path) => readFile(resolve("public/assets", path.split("?")[0])),
+      createPolicy: (_path, bytes) =>
+        ort.InferenceSession.create(bytes, {
           executionProviders: ["cpu"],
           intraOpNumThreads: 1,
           interOpNumThreads: 1,
